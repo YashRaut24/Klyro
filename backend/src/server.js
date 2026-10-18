@@ -2,6 +2,7 @@ import express from 'express'
 import mongoose from 'mongoose'
 import dotenv from 'dotenv'
 import { runBrowser } from './browserRunner.js'
+import { TestRun } from './models/TestRun.js'
 
 dotenv.config()
 
@@ -40,13 +41,57 @@ app.post('/api/browser/run', async (req, res) => {
     })
   }
 
+  let result
   try {
-    const result = await runBrowser(url)
-    return res.json(result)
+    result = await runBrowser(url)
   } catch (error) {
     const message = error.message ? error.message.split('\n')[0] : 'Failed to navigate to website'
     return res.status(502).json({
       error: message
+    })
+  }
+
+  try {
+    const testRun = await TestRun.create(result)
+    return res.json(testRun)
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to save test run'
+    })
+  }
+})
+
+app.get('/api/browser/runs', async (req, res) => {
+  try {
+    const runs = await TestRun.find().sort({ createdAt: -1 }).limit(50)
+    return res.json(runs)
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to retrieve test runs'
+    })
+  }
+})
+
+app.get('/api/browser/runs/:id', async (req, res) => {
+  const { id } = req.params
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({
+      error: 'Invalid test run ID'
+    })
+  }
+
+  try {
+    const testRun = await TestRun.findById(id)
+    if (!testRun) {
+      return res.status(404).json({
+        error: 'Test run not found'
+      })
+    }
+    return res.json(testRun)
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to retrieve test run'
     })
   }
 })
