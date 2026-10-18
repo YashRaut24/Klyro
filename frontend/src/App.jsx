@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
@@ -6,6 +6,33 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+
+  const [history, setHistory] = useState([])
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState(null)
+
+  const fetchHistory = async () => {
+    setHistoryError(null)
+
+    try {
+      const response = await fetch('http://localhost:5000/api/browser/runs')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to retrieve test runs.')
+      }
+
+      setHistory(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setHistoryError(err.message || 'Failed to load test history.')
+    } finally {
+      setIsHistoryLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchHistory()
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -55,11 +82,30 @@ function App() {
       }
 
       setResult(data)
+      fetchHistory()
     } catch (err) {
       setError(err.message || 'An unexpected error occurred.')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const formatTimestamp = (dateString) => {
+    if (!dateString) {
+      return 'Unknown date'
+    }
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) {
+      return dateString
+    }
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
   }
 
   return (
@@ -142,6 +188,73 @@ function App() {
             </div>
           </div>
         )}
+
+        <section className="history-section" aria-label="Test Run History">
+          <div className="history-header">
+            <h2 className="history-title">Test Run History</h2>
+            {!isHistoryLoading && !historyError && (
+              <span className="history-count">
+                {history.length} {history.length === 1 ? 'run' : 'runs'}
+              </span>
+            )}
+          </div>
+
+          {isHistoryLoading && (
+            <div className="history-card history-loading" role="status">
+              <div className="spinner"></div>
+              <p className="status-title">Loading test history...</p>
+            </div>
+          )}
+
+          {historyError && !isHistoryLoading && (
+            <div className="history-card history-error" role="alert">
+              <div className="error-header">
+                <span className="status-badge error-badge">History Error</span>
+                <p className="error-message">{historyError}</p>
+              </div>
+            </div>
+          )}
+
+          {!isHistoryLoading && !historyError && history.length === 0 && (
+            <div className="history-card history-empty">
+              <p className="empty-title">No test runs found</p>
+              <p className="empty-subtitle">
+                Enter a website URL above to start your first browser test run.
+              </p>
+            </div>
+          )}
+
+          {!isHistoryLoading && !historyError && history.length > 0 && (
+            <div className="history-list">
+              {history.map((run) => {
+                const isSuccess = run.status >= 200 && run.status < 400
+                return (
+                  <article key={run._id} className="history-item">
+                    <div className="history-item-header">
+                      <span className={`status-indicator ${isSuccess ? 'indicator-ok' : 'indicator-error'}`}>
+                        {isSuccess ? 'Success' : 'Error'}
+                      </span>
+                      <span className="history-url">{run.url}</span>
+                      <span className={`status-pill ${isSuccess ? 'status-ok' : 'status-warn'}`}>
+                        {run.status ? `HTTP ${run.status}` : 'No Status'}
+                      </span>
+                    </div>
+
+                    <div className="history-item-body">
+                      <span className="history-page-title">{run.title || 'Untitled page'}</span>
+                    </div>
+
+                    <div className="history-item-footer">
+                      <time className="history-timestamp" dateTime={run.createdAt}>
+                        {formatTimestamp(run.createdAt)}
+                      </time>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   )
