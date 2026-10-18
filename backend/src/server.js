@@ -1,6 +1,7 @@
 import express from 'express'
 import mongoose from 'mongoose'
 import dotenv from 'dotenv'
+import path from 'node:path'
 import { runBrowser } from './browserRunner.js'
 import { TestRun } from './models/TestRun.js'
 
@@ -21,6 +22,8 @@ app.use((req, res, next) => {
   }
   next()
 })
+
+app.use('/screenshots', express.static(path.resolve('screenshots')))
 
 app.get('/api/health', (req, res) => {
   res.json({

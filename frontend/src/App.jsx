@@ -11,6 +11,12 @@ function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(true)
   const [historyError, setHistoryError] = useState(null)
 
+  const [expandedIds, setExpandedIds] = useState({})
+  const [evidenceCache, setEvidenceCache] = useState({})
+  const [evidenceLoading, setEvidenceLoading] = useState({})
+  const [evidenceError, setEvidenceError] = useState({})
+  const [imageErrors, setImageErrors] = useState({})
+
   const fetchHistory = async () => {
     setHistoryError(null)
 
@@ -88,6 +94,39 @@ function App() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleToggleExpand = async (id) => {
+    const isCurrentlyExpanded = !!expandedIds[id]
+
+    setExpandedIds((prev) => ({
+      ...prev,
+      [id]: !isCurrentlyExpanded
+    }))
+
+    if (!isCurrentlyExpanded && !evidenceCache[id]) {
+      setEvidenceLoading((prev) => ({ ...prev, [id]: true }))
+      setEvidenceError((prev) => ({ ...prev, [id]: null }))
+
+      try {
+        const response = await fetch(`http://localhost:5000/api/browser/runs/${id}`)
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to retrieve test run evidence.')
+        }
+
+        setEvidenceCache((prev) => ({ ...prev, [id]: data }))
+      } catch (err) {
+        setEvidenceError((prev) => ({ ...prev, [id]: err.message || 'Failed to load evidence.' }))
+      } finally {
+        setEvidenceLoading((prev) => ({ ...prev, [id]: false }))
+      }
+    }
+  }
+
+  const handleImageError = (id) => {
+    setImageErrors((prev) => ({ ...prev, [id]: true }))
   }
 
   const formatTimestamp = (dateString) => {
@@ -228,6 +267,11 @@ function App() {
             <div className="history-list">
               {history.map((run) => {
                 const isSuccess = run.status >= 200 && run.status < 400
+                const isExpanded = !!expandedIds[run._id]
+                const evidence = evidenceCache[run._id]
+                const isLoadingEvidence = !!evidenceLoading[run._id]
+                const itemError = evidenceError[run._id]
+
                 return (
                   <article key={run._id} className="history-item">
                     <div className="history-item-header">
@@ -248,7 +292,137 @@ function App() {
                       <time className="history-timestamp" dateTime={run.createdAt}>
                         {formatTimestamp(run.createdAt)}
                       </time>
+                      <button
+                        type="button"
+                        className="expand-button"
+                        onClick={() => handleToggleExpand(run._id)}
+                        aria-expanded={isExpanded}
+                      >
+                        {isExpanded ? 'Hide Evidence' : 'Inspect Evidence'}
+                      </button>
                     </div>
+
+                    {isExpanded && (
+                      <div className="evidence-panel">
+                        {isLoadingEvidence && (
+                          <div className="evidence-loading" role="status">
+                            <div className="spinner"></div>
+                            <p className="status-title">Loading test evidence...</p>
+                          </div>
+                        )}
+
+                        {itemError && !isLoadingEvidence && (
+                          <div className="evidence-error" role="alert">
+                            <span className="status-badge error-badge">Error</span>
+                            <p className="error-message">{itemError}</p>
+                          </div>
+                        )}
+
+                        {evidence && !isLoadingEvidence && !itemError && (
+                          <div className="evidence-content">
+                            <div className="evidence-group">
+                              <h4 className="evidence-group-title">
+                                Page Errors ({evidence.pageErrors?.length || 0})
+                              </h4>
+                              {evidence.pageErrors && evidence.pageErrors.length > 0 ? (
+                                <ul className="evidence-list">
+                                  {evidence.pageErrors.map((err, idx) => (
+                                    <li key={idx} className="evidence-item">
+                                      <span className="evidence-badge error-badge">{err.name || 'Error'}</span>
+                                      <span className="evidence-text">{err.message}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="evidence-empty">No page errors detected.</p>
+                              )}
+                            </div>
+
+                            <div className="evidence-group">
+                              <h4 className="evidence-group-title">
+                                Console Errors ({evidence.consoleErrors?.length || 0})
+                              </h4>
+                              {evidence.consoleErrors && evidence.consoleErrors.length > 0 ? (
+                                <ul className="evidence-list">
+                                  {evidence.consoleErrors.map((err, idx) => (
+                                    <li key={idx} className="evidence-item">
+                                      <span className="evidence-text">{err.text}</span>
+                                      {err.location && (err.location.url || err.location.lineNumber || err.location.line) && (
+                                        <span className="evidence-location">
+                                          {err.location.url || 'inline'}:{err.location.lineNumber ?? err.location.line ?? 0}:{err.location.columnNumber ?? err.location.column ?? 0}
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="evidence-empty">No console errors detected.</p>
+                              )}
+                            </div>
+
+                            <div className="evidence-group">
+                              <h4 className="evidence-group-title">
+                                Failed Network Requests ({evidence.failedRequests?.length || 0})
+                              </h4>
+                              {evidence.failedRequests && evidence.failedRequests.length > 0 ? (
+                                <ul className="evidence-list">
+                                  {evidence.failedRequests.map((req, idx) => (
+                                    <li key={idx} className="evidence-item">
+                                      <div className="evidence-req-header">
+                                        <span className="method-badge">{req.method || 'GET'}</span>
+                                        <span className="evidence-url">{req.url}</span>
+                                      </div>
+                                      <span className="evidence-failure">{req.failure || 'Network request failed'}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="evidence-empty">No failed network requests detected.</p>
+                              )}
+                            </div>
+
+                            <div className="evidence-group">
+                              <h4 className="evidence-group-title">
+                                HTTP Errors ({evidence.httpErrors?.length || 0})
+                              </h4>
+                              {evidence.httpErrors && evidence.httpErrors.length > 0 ? (
+                                <ul className="evidence-list">
+                                  {evidence.httpErrors.map((err, idx) => (
+                                    <li key={idx} className="evidence-item">
+                                      <div className="evidence-req-header">
+                                        <span className="status-pill status-warn">HTTP {err.status}</span>
+                                        <span className="evidence-url">{err.url}</span>
+                                      </div>
+                                      {err.statusText && <span className="evidence-failure">{err.statusText}</span>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="evidence-empty">No HTTP errors detected.</p>
+                              )}
+                            </div>
+
+                            <div className="evidence-group">
+                              <h4 className="evidence-group-title">Screenshot Preview</h4>
+                              {evidence.screenshot && !imageErrors[run._id] ? (
+                                <div className="screenshot-wrapper">
+                                  <img
+                                    src={evidence.screenshot.startsWith('http') ? evidence.screenshot : `http://localhost:5000/${evidence.screenshot.replace(/^\/+/, '')}`}
+                                    alt={`Screenshot of ${evidence.url}`}
+                                    className="screenshot-preview"
+                                    onError={() => handleImageError(run._id)}
+                                  />
+                                </div>
+                              ) : (
+                                <p className="evidence-empty">
+                                  {evidence.screenshotError || (imageErrors[run._id] ? 'Unable to load screenshot preview.' : 'No screenshot available for this run.')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </article>
                 )
               })}
