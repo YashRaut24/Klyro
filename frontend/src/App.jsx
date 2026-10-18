@@ -320,6 +320,30 @@ function App() {
 
                         {evidence && !isLoadingEvidence && !itemError && (
                           <div className="evidence-content">
+                            <div className="evidence-group findings-group">
+                              <h4 className="evidence-group-title">
+                                Analysis Findings ({evidence.findings?.length || 0})
+                              </h4>
+                              {evidence.findings && evidence.findings.length > 0 ? (
+                                <ul className="findings-list">
+                                  {evidence.findings.map((finding, idx) => (
+                                    <li key={idx} className={`finding-item severity-${finding.severity || 'low'}`}>
+                                      <div className="finding-header">
+                                        <span className={`finding-severity severity-${finding.severity || 'low'}`}>
+                                          {finding.severity}
+                                        </span>
+                                        <span className="finding-type">{finding.type}</span>
+                                        <span className="finding-title">{finding.title}</span>
+                                      </div>
+                                      <p className="finding-description">{finding.description}</p>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="evidence-empty">No failure findings detected.</p>
+                              )}
+                            </div>
+
                             <div className="evidence-group">
                               <h4 className="evidence-group-title">
                                 Page Errors ({evidence.pageErrors?.length || 0})

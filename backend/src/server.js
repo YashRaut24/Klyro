@@ -4,12 +4,23 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import { runBrowser } from './browserRunner.js'
 import { TestRun } from './models/TestRun.js'
+import { analyzeFailures } from './failureAnalyzer.js'
 
 dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 5000
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/klyro'
+
+const ensureFindings = (testRun) => {
+  if (!testRun) return testRun
+  const runObj = typeof testRun.toObject === 'function' ? testRun.toObject() : { ...testRun }
+  if (Array.isArray(runObj.findings) && runObj.findings.length > 0) {
+    return runObj
+  }
+  runObj.findings = analyzeFailures(runObj)
+  return runObj
+}
 
 app.use(express.json())
 
@@ -65,8 +76,12 @@ app.post('/api/browser/run', async (req, res) => {
   }
 
   try {
-    const testRun = await TestRun.create(result)
-    return res.json(testRun)
+    const findings = analyzeFailures(result)
+    const testRun = await TestRun.create({
+      ...result,
+      findings
+    })
+    return res.json(ensureFindings(testRun))
   } catch {
     return res.status(500).json({
       error: 'Failed to save test run'
@@ -77,7 +92,7 @@ app.post('/api/browser/run', async (req, res) => {
 app.get('/api/browser/runs', async (req, res) => {
   try {
     const runs = await TestRun.find().sort({ createdAt: -1 }).limit(50)
-    return res.json(runs)
+    return res.json(runs.map(ensureFindings))
   } catch {
     return res.status(500).json({
       error: 'Failed to retrieve test runs'
@@ -101,7 +116,7 @@ app.get('/api/browser/runs/:id', async (req, res) => {
         error: 'Test run not found'
       })
     }
-    return res.json(testRun)
+    return res.json(ensureFindings(testRun))
   } catch {
     return res.status(500).json({
       error: 'Failed to retrieve test run'

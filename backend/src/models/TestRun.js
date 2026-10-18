@@ -90,6 +90,34 @@ const httpErrorSchema = new mongoose.Schema(
   }
 )
 
+const findingSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      required: true
+    },
+    severity: {
+      type: String,
+      required: true
+    },
+    title: {
+      type: String,
+      required: true
+    },
+    description: {
+      type: String,
+      required: true
+    },
+    evidence: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    }
+  },
+  {
+    _id: false
+  }
+)
+
 const testRunSchema = new mongoose.Schema(
   {
     url: {
@@ -123,6 +151,10 @@ const testRunSchema = new mongoose.Schema(
     },
     httpErrors: {
       type: [httpErrorSchema],
+      default: []
+    },
+    findings: {
+      type: [findingSchema],
       default: []
     },
     screenshot: {
