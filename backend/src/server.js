@@ -5,6 +5,7 @@ import path from 'node:path'
 import { runBrowser } from './browserRunner.js'
 import { TestRun } from './models/TestRun.js'
 import { analyzeFailures } from './failureAnalyzer.js'
+import { analyzeWithGroq } from './aiProvider.js'
 
 dotenv.config()
 
@@ -123,6 +124,62 @@ app.get('/api/browser/runs/:id', async (req, res) => {
     })
   }
 })
+
+const handleAiAnalysis = async (req, res) => {
+  const { id } = req.params
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({
+      error: 'Invalid test run ID'
+    })
+  }
+
+  try {
+    const testRun = await TestRun.findById(id)
+    if (!testRun) {
+      return res.status(404).json({
+        error: 'Test run not found'
+      })
+    }
+
+    const runObj = ensureFindings(testRun)
+    const aiAnalysis = await analyzeWithGroq(runObj)
+
+    testRun.aiAnalysis = aiAnalysis
+    await testRun.save()
+
+    return res.json({
+      testRunId: id,
+      aiAnalysis
+    })
+  } catch (error) {
+    if (error.code === 'MISSING_API_KEY') {
+      return res.status(503).json({
+        error: error.message,
+        code: error.code
+      })
+    }
+    if (error.code === 'RATE_LIMIT') {
+      return res.status(429).json({
+        error: error.message,
+        code: error.code
+      })
+    }
+    if (error.code === 'MALFORMED_RESPONSE') {
+      return res.status(502).json({
+        error: error.message,
+        code: error.code
+      })
+    }
+    return res.status(error.status || 500).json({
+      error: error.message || 'Failed to complete AI analysis',
+      code: error.code || 'AI_ANALYSIS_FAILED'
+    })
+  }
+}
+
+app.post('/api/browser/runs/:id/ai-analysis', handleAiAnalysis)
+app.post('/api/browser/runs/:id/analyze', handleAiAnalysis)
 
 const startServer = async () => {
   try {

@@ -157,6 +157,10 @@ const testRunSchema = new mongoose.Schema(
       type: [findingSchema],
       default: []
     },
+    aiAnalysis: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
     screenshot: {
       type: String,
       default: null
