@@ -16,6 +16,8 @@ function App() {
   const [evidenceLoading, setEvidenceLoading] = useState({})
   const [evidenceError, setEvidenceError] = useState({})
   const [imageErrors, setImageErrors] = useState({})
+  const [aiLoading, setAiLoading] = useState({})
+  const [aiError, setAiError] = useState({})
 
   const fetchHistory = async () => {
     setHistoryError(null)
@@ -127,6 +129,45 @@ function App() {
 
   const handleImageError = (id) => {
     setImageErrors((prev) => ({ ...prev, [id]: true }))
+  }
+
+  const handleGenerateAiAnalysis = async (id) => {
+    if (aiLoading[id]) {
+      return
+    }
+
+    setAiLoading((prev) => ({ ...prev, [id]: true }))
+    setAiError((prev) => ({ ...prev, [id]: null }))
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/browser/runs/${id}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate AI analysis.')
+      }
+
+      setEvidenceCache((prev) => {
+        const current = prev[id] || {}
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            aiAnalysis: data.aiAnalysis
+          }
+        }
+      })
+    } catch (err) {
+      setAiError((prev) => ({ ...prev, [id]: err.message || 'An error occurred during AI analysis.' }))
+    } finally {
+      setAiLoading((prev) => ({ ...prev, [id]: false }))
+    }
   }
 
   const formatTimestamp = (dateString) => {
@@ -271,6 +312,9 @@ function App() {
                 const evidence = evidenceCache[run._id]
                 const isLoadingEvidence = !!evidenceLoading[run._id]
                 const itemError = evidenceError[run._id]
+                const isAiLoading = !!aiLoading[run._id]
+                const currentAiError = aiError[run._id]
+                const currentAiAnalysis = evidence?.aiAnalysis
 
                 return (
                   <article key={run._id} className="history-item">
@@ -343,6 +387,97 @@ function App() {
                                 <p className="evidence-empty">No failure findings detected.</p>
                               )}
                             </div>
+
+                            {evidence.findings && evidence.findings.length > 0 && (
+                              <div className="evidence-group ai-analysis-group">
+                                <div className="ai-section-header">
+                                  <div className="ai-title-wrapper">
+                                    <span className="ai-badge">AI Assistant</span>
+                                    <h4 className="evidence-group-title">AI Analysis & Remediation</h4>
+                                  </div>
+                                  {!currentAiAnalysis && (
+                                    <button
+                                      type="button"
+                                      className="ai-action-button"
+                                      onClick={() => handleGenerateAiAnalysis(run._id)}
+                                      disabled={isAiLoading}
+                                    >
+                                      {isAiLoading ? 'Analyzing...' : 'Generate AI Analysis'}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {isAiLoading && (
+                                  <div className="ai-loading" role="status">
+                                    <div className="spinner"></div>
+                                    <div>
+                                      <p className="status-title">Generating AI root cause analysis...</p>
+                                      <p className="status-detail">Synthesizing findings and remediation suggestions with Groq</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {currentAiError && !isAiLoading && (
+                                  <div className="ai-error-banner" role="alert">
+                                    <div className="ai-error-content">
+                                      <span className="status-badge error-badge">AI Error</span>
+                                      <p className="ai-error-text">{currentAiError}</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="ai-retry-button"
+                                      onClick={() => handleGenerateAiAnalysis(run._id)}
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                )}
+
+                                {currentAiAnalysis && !isAiLoading && (
+                                  <div className="ai-analysis-card">
+                                    <div className="ai-card-header">
+                                      <div className="ai-model-tag">
+                                        Model: {currentAiAnalysis.model || 'Groq AI'}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="ai-regenerate-button"
+                                        onClick={() => handleGenerateAiAnalysis(run._id)}
+                                        disabled={isAiLoading}
+                                      >
+                                        Re-analyze
+                                      </button>
+                                    </div>
+
+                                    <div className="ai-explanation-box">
+                                      <h5 className="ai-subtitle">Likely Root Cause</h5>
+                                      <p className="ai-explanation-text">{currentAiAnalysis.explanation}</p>
+                                    </div>
+
+                                    {Array.isArray(currentAiAnalysis.remediations) && currentAiAnalysis.remediations.length > 0 && (
+                                      <div className="ai-remediations-box">
+                                        <h5 className="ai-subtitle">Remediation Suggestions</h5>
+                                        <div className="ai-remediations-list">
+                                          {currentAiAnalysis.remediations.map((rem, rIdx) => (
+                                            <div key={rIdx} className="ai-remediation-item">
+                                              <div className="remediation-index">{rIdx + 1}</div>
+                                              <div className="remediation-body">
+                                                <strong className="remediation-summary">{rem.summary}</strong>
+                                                <p className="remediation-suggestion">{rem.suggestion}</p>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="ai-disclaimer">
+                                      AI suggestions are diagnostic recommendations and have not been automatically applied or verified.
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             <div className="evidence-group">
                               <h4 className="evidence-group-title">
