@@ -57,7 +57,7 @@ const runAiFrontendAudit = async () => {
         testRunId: 'mock-test-run-id',
         aiAnalysis: {
           status: 'analyzed',
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           explanation: 'Mocked root cause: TypeError accessing property of undefined.',
           remediations: [
             {
@@ -151,7 +151,7 @@ const runAiFrontendAudit = async () => {
         testRunId: 'mock-incomplete-run',
         aiAnalysis: {
           status: 'analyzed',
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           explanation: 'Analysis with incomplete approach telemetry.',
           dualApproach: {
             quickFix: {
@@ -192,7 +192,7 @@ const runAiFrontendAudit = async () => {
         testRunId: 'mock-legacy-run',
         aiAnalysis: {
           status: 'analyzed',
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           explanation: 'Legacy record without dual approach.',
           remediations: [
             {
@@ -246,7 +246,7 @@ const runAiFrontendAudit = async () => {
         testRunId: 'mock-recovered-run',
         aiAnalysis: {
           status: 'analyzed',
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           explanation: 'Recovered successfully.',
           dualApproach: {
             quickFix: {
@@ -274,10 +274,23 @@ const runAiFrontendAudit = async () => {
   console.log('Passed Test 6: API failure and retry flow verified.\n')
 
   console.log('Test 7: Clean run with no findings...')
-  const cleanItem = historyItems.first()
-  await cleanItem.locator('.expand-button').click()
-  const cleanPanel = cleanItem.locator('.evidence-panel')
-  await cleanPanel.waitFor({ state: 'visible', timeout: 5000 })
+  let cleanItem = null
+  for (let i = 0; i < count; i++) {
+    const item = historyItems.nth(i)
+    const urlText = await item.locator('.history-url').textContent()
+    if (urlText.includes('example.com')) {
+      cleanItem = item
+      break
+    }
+  }
+  if (!cleanItem) {
+    cleanItem = historyItems.last()
+  }
+  let cleanPanel = cleanItem.locator('.evidence-panel')
+  if (!(await cleanPanel.isVisible())) {
+    await cleanItem.locator('.expand-button').click()
+    await cleanPanel.waitFor({ state: 'visible', timeout: 5000 })
+  }
 
   const cleanFindings = cleanPanel.locator('.findings-group .evidence-empty')
   if (await cleanFindings.isVisible()) {

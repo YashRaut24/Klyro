@@ -1,4 +1,4 @@
-import { analyzeWithGroq } from './src/aiProvider.js'
+import { analyzeWithGroq, DEFAULT_GROQ_MODEL } from './src/aiProvider.js'
 import assert from 'node:assert'
 
 console.log('--- Running AI Provider (Groq) Integration Tests ---')
@@ -61,12 +61,12 @@ const validMockClient = {
 
 const validResult = await analyzeWithGroq(sampleFindings, {
   client: validMockClient,
-  model: 'llama-3.3-70b-versatile'
+  model: 'openai/gpt-oss-120b'
 })
 
 assert.strictEqual(clientCalls, 1, 'Mock client was called once')
 assert.strictEqual(validResult.status, 'analyzed')
-assert.strictEqual(validResult.model, 'llama-3.3-70b-versatile')
+assert.strictEqual(validResult.model, 'openai/gpt-oss-120b')
 assert(validResult.explanation.includes('TypeError'), 'Explanation preserves error context')
 assert.strictEqual(validResult.remediations.length, 1)
 assert.strictEqual(validResult.remediations[0].summary, 'Add optional chaining')
@@ -489,5 +489,74 @@ const fallbackResult = await analyzeWithGroq(sparseFindings, { client: omittedCh
 assert(fallbackResult.dualApproach.quickFix.suggestedChange.includes('Insufficient evidence'))
 assert(fallbackResult.dualApproach.structuralFix.suggestedChange.includes('Insufficient evidence'))
 console.log('Passed Test 6: Insufficient evidence handling verified.\n')
+
+console.log('Test 7: Model selection and precedence (options.model > process.env.GROQ_MODEL > default)')
+assert.strictEqual(DEFAULT_GROQ_MODEL, 'openai/gpt-oss-120b')
+
+const originalEnvModel = process.env.GROQ_MODEL
+let capturedModel = null
+const modelCapturingClient = {
+  chat: {
+    completions: {
+      create: async (params) => {
+        capturedModel = params.model
+        return {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  explanation: 'Explanation for model test',
+                  remediations: [],
+                  dualApproach: {
+                    quickFix: {
+                      title: 'Quick',
+                      explanation: 'Explanation',
+                      suggestedChange: 'code()',
+                      tradeOffs: 'Trade-off'
+                    },
+                    structuralFix: {
+                      title: 'Structural',
+                      explanation: 'Explanation',
+                      suggestedChange: 'architecture()',
+                      tradeOffs: 'Trade-off'
+                    }
+                  }
+                })
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+
+delete process.env.GROQ_MODEL
+const defaultFallbackResult = await analyzeWithGroq(sampleFindings, { client: modelCapturingClient })
+assert.strictEqual(capturedModel, 'openai/gpt-oss-120b')
+assert.strictEqual(defaultFallbackResult.model, 'openai/gpt-oss-120b')
+
+process.env.GROQ_MODEL = 'env-specified-model'
+const envOverrideResult = await analyzeWithGroq(sampleFindings, { client: modelCapturingClient })
+assert.strictEqual(capturedModel, 'env-specified-model')
+assert.strictEqual(envOverrideResult.model, 'env-specified-model')
+
+const optionsOverrideResult = await analyzeWithGroq(sampleFindings, { client: modelCapturingClient, model: 'caller-override-model' })
+assert.strictEqual(capturedModel, 'caller-override-model')
+assert.strictEqual(optionsOverrideResult.model, 'caller-override-model')
+
+const cleanWithEnv = await analyzeWithGroq([], {})
+assert.strictEqual(cleanWithEnv.model, 'env-specified-model')
+
+delete process.env.GROQ_MODEL
+const cleanWithDefault = await analyzeWithGroq([], {})
+assert.strictEqual(cleanWithDefault.model, 'openai/gpt-oss-120b')
+
+if (originalEnvModel !== undefined) {
+  process.env.GROQ_MODEL = originalEnvModel
+} else {
+  delete process.env.GROQ_MODEL
+}
+console.log('Passed Test 7: Model selection and precedence verified.\n')
 
 console.log('ALL AI PROVIDER (GROQ) TESTS PASSED!')

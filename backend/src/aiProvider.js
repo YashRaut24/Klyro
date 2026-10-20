@@ -42,9 +42,11 @@ Rules:
   }
 }`
 
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
+
 export const analyzeWithGroq = async (testRunOrFindings, options = {}) => {
   const preparedInput = prepareAiAnalysisInput(testRunOrFindings, options.metadata || {})
-  const model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+  const model = options.model || process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL
 
   if (preparedInput.findings.length === 0) {
     return {
