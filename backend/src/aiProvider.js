@@ -2,14 +2,22 @@ import Groq from 'groq-sdk'
 import { prepareAiAnalysisInput } from './aiFailureAnalyzer.js'
 
 const SYSTEM_PROMPT = `You are Klyro's automated failure analysis assistant.
-Your task is to analyze browser test findings and provide concise explanations of likely root causes and actionable remediation suggestions.
+Your task is to analyze browser test findings and provide concise explanations of likely root causes, actionable remediation suggestions, and two distinct remediation approaches: a Quick Fix and a Structural Fix.
 
 Rules:
-1. Base your explanation strictly on the provided findings and evidence.
-2. Do not invent new browser events, URLs, or errors not present in the input.
-3. Provide concrete, actionable remediation suggestions for developers.
-4. Never claim that a suggested fix has been applied or verified.
-5. You must respond with valid JSON matching this schema:
+1. Base your explanation and fixes strictly on the provided findings and evidence.
+2. Do not invent new browser events, URLs, repository files, or errors not present in the input.
+3. If the available evidence is insufficient to specify exact code or project files, explicitly state that in "suggestedChange" rather than guessing or inventing source files.
+4. Provide two distinct remediation approaches:
+   - "quickFix": A minimal, conservative change intended to address the immediate problem.
+   - "structuralFix": A broader architectural, systemic, or configuration improvement intended to address the underlying root cause.
+5. Each approach must include:
+   - "title": A concise, descriptive title.
+   - "explanation": Why and how this approach resolves the issue.
+   - "suggestedChange": Suggested code or configuration snippet when supported by evidence. If evidence is insufficient, state: "Insufficient evidence to provide exact code changes without inspecting source files."
+   - "tradeOffs": Trade-offs, risks, migration effort, or limitations of this approach.
+6. Never claim that a suggested fix has been applied or verified.
+7. You must respond with valid JSON matching this schema:
 {
   "explanation": "A concise explanation of the likely cause of the observed failures.",
   "remediations": [
@@ -17,7 +25,21 @@ Rules:
       "summary": "Short title of the recommended action.",
       "suggestion": "Concrete steps to resolve or investigate the issue."
     }
-  ]
+  ],
+  "dualApproach": {
+    "quickFix": {
+      "title": "Short title of the quick fix",
+      "explanation": "Minimal, conservative change to address the immediate problem.",
+      "suggestedChange": "Concrete code snippet or statement of insufficient evidence.",
+      "tradeOffs": "Trade-offs or limitations of this immediate fix."
+    },
+    "structuralFix": {
+      "title": "Short title of the structural fix",
+      "explanation": "Broader architectural or configuration improvement addressing the root cause.",
+      "suggestedChange": "Architectural or configuration change or statement of insufficient evidence.",
+      "tradeOffs": "Trade-offs or considerations of this structural fix."
+    }
+  }
 }`
 
 export const analyzeWithGroq = async (testRunOrFindings, options = {}) => {
@@ -30,6 +52,8 @@ export const analyzeWithGroq = async (testRunOrFindings, options = {}) => {
       model,
       explanation: 'No failure findings detected. The website loaded and completed all checks without errors.',
       remediations: [],
+      dualApproach: null,
+      approaches: null,
       target: preparedInput.target
     }
   }
@@ -52,7 +76,7 @@ export const analyzeWithGroq = async (testRunOrFindings, options = {}) => {
         { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
-          content: `Analyze the following browser test failure findings and provide root cause explanations and remediation suggestions:\n\n${JSON.stringify(preparedInput, null, 2)}`
+          content: `Analyze the following browser test failure findings and provide root cause explanations, remediations, and dual-approach quick and structural fixes:\n\n${JSON.stringify(preparedInput, null, 2)}`
         }
       ],
       response_format: { type: 'json_object' },
@@ -120,11 +144,77 @@ export const analyzeWithGroq = async (testRunOrFindings, options = {}) => {
     }
   })
 
+  const rawDualApproach = parsed.dualApproach || parsed.approaches
+  if (!rawDualApproach || typeof rawDualApproach !== 'object') {
+    const error = new Error('Groq response missing required "dualApproach" object.')
+    error.code = 'MALFORMED_RESPONSE'
+    error.status = 502
+    throw error
+  }
+
+  if (!rawDualApproach.quickFix || typeof rawDualApproach.quickFix !== 'object') {
+    const error = new Error('Groq response missing required "quickFix" approach.')
+    error.code = 'MALFORMED_RESPONSE'
+    error.status = 502
+    throw error
+  }
+
+  if (!rawDualApproach.structuralFix || typeof rawDualApproach.structuralFix !== 'object') {
+    const error = new Error('Groq response missing required "structuralFix" approach.')
+    error.code = 'MALFORMED_RESPONSE'
+    error.status = 502
+    throw error
+  }
+
+  const validateApproach = (approach, name) => {
+    if (typeof approach.title !== 'string' || !approach.title.trim()) {
+      const error = new Error(`Groq response missing required "title" in "${name}".`)
+      error.code = 'MALFORMED_RESPONSE'
+      error.status = 502
+      throw error
+    }
+    if (typeof approach.explanation !== 'string' || !approach.explanation.trim()) {
+      const error = new Error(`Groq response missing required "explanation" in "${name}".`)
+      error.code = 'MALFORMED_RESPONSE'
+      error.status = 502
+      throw error
+    }
+  }
+
+  validateApproach(rawDualApproach.quickFix, 'quickFix')
+  validateApproach(rawDualApproach.structuralFix, 'structuralFix')
+
+  const normalizeApproach = (raw) => {
+    const suggestedChange = typeof raw.suggestedChange === 'string' && raw.suggestedChange.trim()
+      ? raw.suggestedChange.trim()
+      : (typeof raw.codeChange === 'string' && raw.codeChange.trim()
+        ? raw.codeChange.trim()
+        : 'Insufficient evidence to provide exact code changes without inspecting source files.')
+
+    const tradeOffs = typeof raw.tradeOffs === 'string' && raw.tradeOffs.trim()
+      ? raw.tradeOffs.trim()
+      : (typeof raw.tradeoffs === 'string' && raw.tradeoffs.trim() ? raw.tradeoffs.trim() : '')
+
+    return {
+      title: raw.title.trim(),
+      explanation: raw.explanation.trim(),
+      suggestedChange,
+      tradeOffs
+    }
+  }
+
+  const dualApproach = {
+    quickFix: normalizeApproach(rawDualApproach.quickFix),
+    structuralFix: normalizeApproach(rawDualApproach.structuralFix)
+  }
+
   return {
     status: 'analyzed',
     model,
     explanation: parsed.explanation.trim(),
     remediations,
+    dualApproach,
+    approaches: dualApproach,
     target: preparedInput.target,
     findingsCount: preparedInput.findings.length,
     analyzedAt: new Date().toISOString()

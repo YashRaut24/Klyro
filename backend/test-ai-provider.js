@@ -13,7 +13,7 @@ const sampleFindings = [
   }
 ]
 
-console.log('Test 1: Valid structured output from mock Groq provider')
+console.log('Test 1: Valid structured output from mock Groq provider with dual-approach fixes')
 let clientCalls = 0
 const validMockClient = {
   chat: {
@@ -34,7 +34,21 @@ const validMockClient = {
                       summary: 'Add optional chaining',
                       suggestion: 'Use optional chaining (?.) or defensive null checks before property access.'
                     }
-                  ]
+                  ],
+                  dualApproach: {
+                    quickFix: {
+                      title: 'Add optional chaining guard',
+                      explanation: 'Add optional chaining to prevent the immediate unhandled TypeError.',
+                      suggestedChange: 'const value = targetObject?.property ?? fallback;',
+                      tradeOffs: 'Suppresses the crash immediately but may mask an upstream missing data issue.'
+                    },
+                    structuralFix: {
+                      title: 'Enforce schema validation and error boundaries',
+                      explanation: 'Validate incoming API data with a schema parser and wrap component in an error boundary.',
+                      suggestedChange: 'zodSchema.parse(payload); and <ErrorBoundary fallback={<ErrorCard />} />',
+                      tradeOffs: 'Requires dependency addition and restructuring of data ingestion layers.'
+                    }
+                  }
                 })
               }
             }
@@ -59,9 +73,22 @@ assert.strictEqual(validResult.remediations[0].summary, 'Add optional chaining')
 assert(validResult.remediations[0].suggestion.includes('optional chaining'))
 assert.strictEqual(validResult.findingsCount, 1)
 assert(validResult.analyzedAt, 'Timestamp recorded')
+
+assert(validResult.dualApproach, 'dualApproach object is present')
+assert.strictEqual(validResult.dualApproach.quickFix.title, 'Add optional chaining guard')
+assert(validResult.dualApproach.quickFix.explanation.includes('immediate unhandled TypeError'))
+assert(validResult.dualApproach.quickFix.suggestedChange.includes('targetObject?.property'))
+assert(validResult.dualApproach.quickFix.tradeOffs.includes('Suppresses the crash'))
+
+assert.strictEqual(validResult.dualApproach.structuralFix.title, 'Enforce schema validation and error boundaries')
+assert(validResult.dualApproach.structuralFix.explanation.includes('schema parser'))
+assert(validResult.dualApproach.structuralFix.suggestedChange.includes('zodSchema.parse'))
+assert(validResult.dualApproach.structuralFix.tradeOffs.includes('Requires dependency addition'))
+
+assert.strictEqual(validResult.approaches, validResult.dualApproach, 'approaches alias is provided')
 console.log('Passed Test 1: Valid structured JSON handled and mapped properly.\n')
 
-console.log('Test 2: Malformed output handling')
+console.log('Test 2: Malformed output handling (JSON, fields, and dualApproach structures)')
 const malformedJsonClient = {
   chat: {
     completions: {
@@ -119,6 +146,145 @@ await assert.rejects(
     return true
   }
 )
+
+const missingDualApproachClient = {
+  chat: {
+    completions: {
+      create: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: 'Valid explanation',
+                remediations: []
+              })
+            }
+          }
+        ]
+      })
+    }
+  }
+}
+await assert.rejects(
+  async () => {
+    await analyzeWithGroq(sampleFindings, { client: missingDualApproachClient })
+  },
+  (err) => {
+    assert.strictEqual(err.code, 'MALFORMED_RESPONSE')
+    assert(err.message.includes('dualApproach'))
+    return true
+  }
+)
+
+const missingQuickFixClient = {
+  chat: {
+    completions: {
+      create: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: 'Valid explanation',
+                remediations: [],
+                dualApproach: {
+                  structuralFix: {
+                    title: 'Valid structural fix',
+                    explanation: 'Valid explanation'
+                  }
+                }
+              })
+            }
+          }
+        ]
+      })
+    }
+  }
+}
+await assert.rejects(
+  async () => {
+    await analyzeWithGroq(sampleFindings, { client: missingQuickFixClient })
+  },
+  (err) => {
+    assert.strictEqual(err.code, 'MALFORMED_RESPONSE')
+    assert(err.message.includes('quickFix'))
+    return true
+  }
+)
+
+const missingStructuralFixClient = {
+  chat: {
+    completions: {
+      create: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: 'Valid explanation',
+                remediations: [],
+                dualApproach: {
+                  quickFix: {
+                    title: 'Valid quick fix',
+                    explanation: 'Valid explanation'
+                  }
+                }
+              })
+            }
+          }
+        ]
+      })
+    }
+  }
+}
+await assert.rejects(
+  async () => {
+    await analyzeWithGroq(sampleFindings, { client: missingStructuralFixClient })
+  },
+  (err) => {
+    assert.strictEqual(err.code, 'MALFORMED_RESPONSE')
+    assert(err.message.includes('structuralFix'))
+    return true
+  }
+)
+
+const missingTitleInApproachClient = {
+  chat: {
+    completions: {
+      create: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: 'Valid explanation',
+                remediations: [],
+                dualApproach: {
+                  quickFix: {
+                    title: '',
+                    explanation: 'Explanation without title'
+                  },
+                  structuralFix: {
+                    title: 'Valid title',
+                    explanation: 'Valid explanation'
+                  }
+                }
+              })
+            }
+          }
+        ]
+      })
+    }
+  }
+}
+await assert.rejects(
+  async () => {
+    await analyzeWithGroq(sampleFindings, { client: missingTitleInApproachClient })
+  },
+  (err) => {
+    assert.strictEqual(err.code, 'MALFORMED_RESPONSE')
+    assert(err.message.includes('title'))
+    return true
+  }
+)
+
 console.log('Passed Test 2: Malformed responses caught with MALFORMED_RESPONSE code.\n')
 
 console.log('Test 3: Missing configuration handling')
@@ -224,7 +390,104 @@ const emptyResult = await analyzeWithGroq([], { client: unusedClient })
 assert.strictEqual(emptyClientCalled, false, 'Client should not be invoked for clean run with 0 findings')
 assert.strictEqual(emptyResult.status, 'clean')
 assert.strictEqual(emptyResult.remediations.length, 0)
+assert.strictEqual(emptyResult.dualApproach, null)
+assert.strictEqual(emptyResult.approaches, null)
 assert(emptyResult.explanation.includes('No failure findings detected'))
 console.log('Passed Test 5: Clean runs with empty findings return clean state without calling provider.\n')
+
+console.log('Test 6: Insufficient evidence handling')
+const sparseFindings = [
+  {
+    type: 'HTTP_ERROR',
+    severity: 'high',
+    title: 'HTTP 500 Internal Server Error',
+    description: 'Server returned status 500 with empty body',
+    evidence: { status: 500, url: 'https://example.com/api/v1/resource' }
+  }
+]
+
+const insufficientEvidenceMockClient = {
+  chat: {
+    completions: {
+      create: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: 'HTTP 500 error occurred but no response body or stack trace was available in evidence.',
+                remediations: [
+                  {
+                    summary: 'Check server logs',
+                    suggestion: 'Inspect upstream backend logs for the request ID.'
+                  }
+                ],
+                dualApproach: {
+                  quickFix: {
+                    title: 'Check server status and restart crashed workers',
+                    explanation: 'Immediate operational check to restore availability.',
+                    suggestedChange: 'Insufficient evidence to provide exact code changes without inspecting source files.',
+                    tradeOffs: 'Temporary workaround that does not identify the underlying bug.'
+                  },
+                  structuralFix: {
+                    title: 'Add centralized error monitoring and structured responses',
+                    explanation: 'Instrument the backend endpoint with structured error middleware and tracing.',
+                    suggestedChange: 'Insufficient evidence to specify repository configuration without access to backend source code.',
+                    tradeOffs: 'Requires infrastructure setup and observability tooling configuration.'
+                  }
+                }
+              })
+            }
+          }
+        ]
+      })
+    }
+  }
+}
+
+const insufficientResult = await analyzeWithGroq(sparseFindings, {
+  client: insufficientEvidenceMockClient
+})
+
+assert.strictEqual(insufficientResult.status, 'analyzed')
+assert(insufficientResult.dualApproach.quickFix.suggestedChange.toLowerCase().includes('insufficient evidence'))
+assert(insufficientResult.dualApproach.structuralFix.suggestedChange.toLowerCase().includes('insufficient evidence'))
+
+const omittedChangeClient = {
+  chat: {
+    completions: {
+      create: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: 'HTTP 500 error occurred.',
+                remediations: [],
+                dualApproach: {
+                  quickFix: {
+                    title: 'Quick action',
+                    explanation: 'Brief explanation',
+                    suggestedChange: '',
+                    tradeOffs: 'Some trade-off'
+                  },
+                  structuralFix: {
+                    title: 'Structural action',
+                    explanation: 'Brief explanation',
+                    suggestedChange: '   ',
+                    tradeOffs: 'Some trade-off'
+                  }
+                }
+              })
+            }
+          }
+        ]
+      })
+    }
+  }
+}
+
+const fallbackResult = await analyzeWithGroq(sparseFindings, { client: omittedChangeClient })
+assert(fallbackResult.dualApproach.quickFix.suggestedChange.includes('Insufficient evidence'))
+assert(fallbackResult.dualApproach.structuralFix.suggestedChange.includes('Insufficient evidence'))
+console.log('Passed Test 6: Insufficient evidence handling verified.\n')
 
 console.log('ALL AI PROVIDER (GROQ) TESTS PASSED!')
