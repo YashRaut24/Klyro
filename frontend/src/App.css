@@ -954,6 +954,121 @@
   line-height: 1.35;
 }
 
+.dual-approach-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dual-approach-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.approach-card {
+  background-color: #0b1329;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.quick-fix-card {
+  border-left: 3px solid #0284c7;
+}
+
+.structural-fix-card {
+  border-left: 3px solid #6366f1;
+}
+
+.approach-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #1e293b;
+}
+
+.approach-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  width: fit-content;
+}
+
+.quick-fix-badge {
+  background-color: #0369a1;
+  color: #ffffff;
+}
+
+.structural-fix-badge {
+  background-color: #4338ca;
+  color: #ffffff;
+}
+
+.approach-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f8fafc;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.approach-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.approach-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.approach-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.approach-text {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.approach-code-block {
+  background-color: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 0.375rem;
+  padding: 0.65rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.approach-insufficient {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 0;
+}
+
 @media (max-width: 600px) {
   .input-group {
     flex-direction: column;
@@ -1023,5 +1138,9 @@
 
   .ai-retry-button {
     width: 100%;
+  }
+
+  .dual-approach-container {
+    grid-template-columns: 1fr;
   }
 }

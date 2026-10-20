@@ -315,6 +315,8 @@ function App() {
                 const isAiLoading = !!aiLoading[run._id]
                 const currentAiError = aiError[run._id]
                 const currentAiAnalysis = evidence?.aiAnalysis
+                const dualApproach = currentAiAnalysis?.dualApproach || currentAiAnalysis?.approaches
+                const hasDualApproach = !!(dualApproach && (dualApproach.quickFix || dualApproach.structuralFix))
 
                 return (
                   <article key={run._id} className="history-item">
@@ -454,21 +456,86 @@ function App() {
                                       <p className="ai-explanation-text">{currentAiAnalysis.explanation}</p>
                                     </div>
 
-                                    {Array.isArray(currentAiAnalysis.remediations) && currentAiAnalysis.remediations.length > 0 && (
-                                      <div className="ai-remediations-box">
-                                        <h5 className="ai-subtitle">Remediation Suggestions</h5>
-                                        <div className="ai-remediations-list">
-                                          {currentAiAnalysis.remediations.map((rem, rIdx) => (
-                                            <div key={rIdx} className="ai-remediation-item">
-                                              <div className="remediation-index">{rIdx + 1}</div>
-                                              <div className="remediation-body">
-                                                <strong className="remediation-summary">{rem.summary}</strong>
-                                                <p className="remediation-suggestion">{rem.suggestion}</p>
+                                    {hasDualApproach ? (
+                                      <div className="dual-approach-section">
+                                        <h5 className="ai-subtitle">Remediation Approaches</h5>
+                                        <div className="dual-approach-container">
+                                          <div className="approach-card quick-fix-card">
+                                            <div className="approach-header">
+                                              <span className="approach-badge quick-fix-badge">Quick Fix</span>
+                                              <h6 className="approach-title">{dualApproach.quickFix?.title || 'Immediate Containment'}</h6>
+                                            </div>
+                                            <div className="approach-body">
+                                              <div className="approach-field">
+                                                <span className="approach-label">Explanation</span>
+                                                <p className="approach-text">
+                                                  {dualApproach.quickFix?.explanation || 'Insufficient evidence to provide immediate fix explanation.'}
+                                                </p>
+                                              </div>
+                                              <div className="approach-field">
+                                                <span className="approach-label">Suggested Change</span>
+                                                {dualApproach.quickFix?.suggestedChange ? (
+                                                  <pre className="approach-code-block"><code>{dualApproach.quickFix.suggestedChange}</code></pre>
+                                                ) : (
+                                                  <p className="approach-insufficient">Insufficient evidence to provide exact code changes without inspecting source files.</p>
+                                                )}
+                                              </div>
+                                              <div className="approach-field">
+                                                <span className="approach-label">Trade-offs</span>
+                                                <p className="approach-text">
+                                                  {dualApproach.quickFix?.tradeOffs || dualApproach.quickFix?.tradeoffs || 'None specified.'}
+                                                </p>
                                               </div>
                                             </div>
-                                          ))}
+                                          </div>
+
+                                          <div className="approach-card structural-fix-card">
+                                            <div className="approach-header">
+                                              <span className="approach-badge structural-fix-badge">Structural Fix</span>
+                                              <h6 className="approach-title">{dualApproach.structuralFix?.title || 'Architectural Improvement'}</h6>
+                                            </div>
+                                            <div className="approach-body">
+                                              <div className="approach-field">
+                                                <span className="approach-label">Explanation</span>
+                                                <p className="approach-text">
+                                                  {dualApproach.structuralFix?.explanation || 'Insufficient evidence to provide architectural fix explanation.'}
+                                                </p>
+                                              </div>
+                                              <div className="approach-field">
+                                                <span className="approach-label">Suggested Change</span>
+                                                {dualApproach.structuralFix?.suggestedChange ? (
+                                                  <pre className="approach-code-block"><code>{dualApproach.structuralFix.suggestedChange}</code></pre>
+                                                ) : (
+                                                  <p className="approach-insufficient">Insufficient evidence to provide exact structural changes without inspecting repository architecture.</p>
+                                                )}
+                                              </div>
+                                              <div className="approach-field">
+                                                <span className="approach-label">Trade-offs</span>
+                                                <p className="approach-text">
+                                                  {dualApproach.structuralFix?.tradeOffs || dualApproach.structuralFix?.tradeoffs || 'None specified.'}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
+                                    ) : (
+                                      Array.isArray(currentAiAnalysis.remediations) && currentAiAnalysis.remediations.length > 0 && (
+                                        <div className="ai-remediations-box">
+                                          <h5 className="ai-subtitle">Remediation Suggestions</h5>
+                                          <div className="ai-remediations-list">
+                                            {currentAiAnalysis.remediations.map((rem, rIdx) => (
+                                              <div key={rIdx} className="ai-remediation-item">
+                                                <div className="remediation-index">{rIdx + 1}</div>
+                                                <div className="remediation-body">
+                                                  <strong className="remediation-summary">{rem.summary}</strong>
+                                                  <p className="remediation-suggestion">{rem.suggestion}</p>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )
                                     )}
 
                                     <div className="ai-disclaimer">
