@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Klyro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <div class="header-brand">
+        <h1 class="brand-title">Klyro</h1>
+        <span class="badge version-badge">v0.1.0</span>
+      </div>
+      <div class="backend-status-pill" id="backendStatusPill">
+        <span class="status-dot" id="backendStatusDot"></span>
+        <span class="status-label" id="backendStatusLabel">Checking...</span>
+      </div>
+    </header>
+
+    <section class="card backend-card">
+      <div class="card-header">
+        <span class="card-title">Backend Connection</span>
+        <button id="checkBackendBtn" class="btn btn-secondary btn-sm" type="button">Refresh</button>
+      </div>
+      <div id="backendMessage" class="status-detail">Checking connection to http://localhost:5000...</div>
+    </section>
+
+    <section class="card active-tab-card">
+      <div class="card-header">
+        <span class="card-title">Active Page</span>
+        <span id="tabStatusBadge" class="badge badge-neutral">Detecting</span>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="tabTitleDisplay">Title</label>
+        <div id="tabTitleDisplay" class="field-value text-truncate">Detecting active tab...</div>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="tabUrlDisplay">URL</label>
+        <div id="tabUrlDisplay" class="field-value field-url text-truncate">--</div>
+      </div>
+      <div id="unsupportedWarning" class="alert alert-warning" hidden>
+        Unsupported page: Chrome internal, extension, or non-web pages (such as chrome://, about:, or edge://) cannot be inspected. Please navigate to an HTTP or HTTPS webpage.
+      </div>
+      <div class="action-row">
+        <button id="inspectBtn" class="btn btn-primary" type="button" disabled>Inspect Active Page</button>
+      </div>
+    </section>
+
+    <section id="inspectionSection" class="card inspection-card" hidden>
+      <div class="card-header">
+        <span class="card-title">Inspection Results</span>
+        <span id="inspectedAtBadge" class="badge badge-info">--</span>
+      </div>
+      <div id="inspectionError" class="alert alert-danger" hidden></div>
+      <div id="inspectionDetails" class="details-grid">
+        <div class="detail-item">
+          <span class="detail-key">Ready State</span>
+          <span id="resReadyState" class="detail-val">--</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-key">Character Set</span>
+          <span id="resCharset" class="detail-val">--</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-key">Viewport</span>
+          <span id="resViewport" class="detail-val">--</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-key">Doctype</span>
+          <span id="resDoctype" class="detail-val">--</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-key">Language</span>
+          <span id="resLanguage" class="detail-val">--</span>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
