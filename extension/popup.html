@@ -41,10 +41,55 @@
         <div id="tabUrlDisplay" class="field-value field-url text-truncate">--</div>
       </div>
       <div id="unsupportedWarning" class="alert alert-warning" hidden>
-        Unsupported page: Chrome internal, extension, or non-web pages (such as chrome://, about:, or edge://) cannot be inspected. Please navigate to an HTTP or HTTPS webpage.
+        Unsupported page: Chrome internal, extension, or non-web pages (such as chrome://, about:, or edge://) cannot be tested. Please navigate to an HTTP or HTTPS webpage.
       </div>
-      <div class="action-row">
-        <button id="inspectBtn" class="btn btn-primary" type="button" disabled>Inspect Active Page</button>
+      <div class="action-row action-row-split">
+        <button id="inspectBtn" class="btn btn-secondary" type="button" disabled>Inspect Active Page</button>
+        <button id="runTestBtn" class="btn btn-primary" type="button" disabled>Run Website Test</button>
+      </div>
+    </section>
+
+    <section id="testResultSection" class="card test-result-card" hidden>
+      <div class="card-header">
+        <span class="card-title">Website Test Results</span>
+        <span id="testStatusBadge" class="badge badge-neutral">--</span>
+      </div>
+      <div id="testResultError" class="alert alert-danger" hidden></div>
+      <div id="testResultContent" class="test-result-content">
+        <div id="testResultMessage" class="result-message"></div>
+        <div class="field-group">
+          <label class="field-label" for="resTestedUrl">Tested URL</label>
+          <div id="resTestedUrl" class="field-value field-url text-truncate">--</div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="resPageTitle">Page Title</label>
+          <div id="resPageTitle" class="field-value text-truncate">--</div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="resHttpStatus">HTTP Status</label>
+          <div id="resHttpStatus" class="field-value">--</div>
+        </div>
+        <div class="evidence-summary">
+          <div class="card-title evidence-title">Observed Evidence</div>
+          <div class="evidence-grid">
+            <div class="evidence-stat">
+              <span id="countPageErrors" class="stat-count">0</span>
+              <span class="stat-label">Page Errors</span>
+            </div>
+            <div class="evidence-stat">
+              <span id="countConsoleErrors" class="stat-count">0</span>
+              <span class="stat-label">Console Errors</span>
+            </div>
+            <div class="evidence-stat">
+              <span id="countNetworkFailures" class="stat-count">0</span>
+              <span class="stat-label">Failed Requests</span>
+            </div>
+            <div class="evidence-stat">
+              <span id="countHttpErrors" class="stat-count">0</span>
+              <span class="stat-label">HTTP Errors</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

@@ -4,6 +4,10 @@
   padding: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   width: 380px;
   min-height: 400px;
@@ -76,6 +80,12 @@ body {
   background-color: #450a0a;
   color: #fca5a5;
   border: 1px solid #dc2626;
+}
+
+.badge-warning {
+  background-color: #422006;
+  color: #fde68a;
+  border: 1px solid #b45309;
 }
 
 .badge-info {
@@ -220,6 +230,12 @@ body {
   padding-top: 4px;
 }
 
+.action-row-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -231,6 +247,7 @@ body {
   cursor: pointer;
   border: none;
   transition: background-color 0.15s ease, opacity 0.15s ease;
+  text-align: center;
 }
 
 .btn:disabled {
@@ -241,7 +258,6 @@ body {
 .btn-primary {
   background-color: #0284c7;
   color: #ffffff;
-  width: 100%;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -262,6 +278,88 @@ body {
 .btn-sm {
   padding: 3px 8px;
   font-size: 11px;
+}
+
+.btn-loading {
+  opacity: 0.75;
+}
+
+.test-result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-message {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.message-success {
+  background-color: #064e3b;
+  color: #6ee7b7;
+  border: 1px solid #059669;
+}
+
+.message-danger {
+  background-color: #450a0a;
+  color: #fca5a5;
+  border: 1px solid #dc2626;
+}
+
+.message-pending {
+  background-color: #0c4a6e;
+  color: #7dd3fc;
+  border: 1px solid #0284c7;
+}
+
+.evidence-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.evidence-title {
+  font-size: 10px;
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.evidence-stat {
+  background-color: #0b1329;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.stat-count {
+  font-size: 14px;
+  font-weight: 700;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
 }
 
 .details-grid {

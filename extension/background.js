@@ -1,4 +1,5 @@
 const BACKEND_HEALTH_URL = 'http://localhost:5000/api/health'
+const BACKEND_RUN_URL = 'http://localhost:5000/api/browser/run'
 
 const checkBackendHealth = async () => {
   const controller = new AbortController()
@@ -20,6 +21,51 @@ const checkBackendHealth = async () => {
     return {
       ok: false,
       error: err.name === 'AbortError' ? 'Connection timed out' : (err.message || 'Network request failed')
+    }
+  }
+}
+
+const runWebsiteTest = async (url) => {
+  if (!url || typeof url !== 'string') {
+    return { ok: false, error: 'No URL provided' }
+  }
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' }
+    }
+  } catch {
+    return { ok: false, error: 'Invalid URL format' }
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
+  try {
+    const res = await fetch(BACKEND_RUN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ url }),
+      signal: controller.signal
+    })
+    clearTimeout(timeoutId)
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data?.error || `Backend responded with HTTP ${res.status}`
+      }
+    }
+    return { ok: true, data }
+  } catch (err) {
+    clearTimeout(timeoutId)
+    return {
+      ok: false,
+      error: err.name === 'AbortError'
+        ? 'Test execution timed out after 60 seconds'
+        : (err.message || 'Cannot reach backend at http://localhost:5000. Verify server is running.')
     }
   }
 }
@@ -72,6 +118,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.action === 'INSPECT_PAGE') {
     inspectTab(message.tabId, message.url).then(sendResponse)
+    return true
+  }
+
+  if (message?.action === 'RUN_TEST') {
+    runWebsiteTest(message.url).then(sendResponse)
     return true
   }
 
