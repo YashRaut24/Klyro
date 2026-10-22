@@ -18,6 +18,8 @@ function App() {
   const [imageErrors, setImageErrors] = useState({})
   const [aiLoading, setAiLoading] = useState({})
   const [aiError, setAiError] = useState({})
+  const [verificationLoading, setVerificationLoading] = useState({})
+  const [verificationError, setVerificationError] = useState({})
 
   const fetchHistory = async () => {
     setHistoryError(null)
@@ -170,6 +172,95 @@ function App() {
     }
   }
 
+  const handleVerifyFix = async (id) => {
+    if (verificationLoading[id]) {
+      return
+    }
+
+    setExpandedIds((prev) => ({
+      ...prev,
+      [id]: true
+    }))
+
+    if (!evidenceCache[id]) {
+      setEvidenceLoading((prev) => ({ ...prev, [id]: true }))
+      fetch(`http://localhost:5000/api/browser/runs/${id}`)
+        .then((res) => res.json())
+        .then((evidenceData) => {
+          setEvidenceCache((prev) => ({
+            ...prev,
+            [id]: {
+              ...evidenceData,
+              ...(prev[id] || {})
+            }
+          }))
+        })
+        .catch(() => {})
+        .finally(() => {
+          setEvidenceLoading((prev) => ({ ...prev, [id]: false }))
+        })
+    }
+
+    setVerificationLoading((prev) => ({ ...prev, [id]: true }))
+    setVerificationError((prev) => ({ ...prev, [id]: null }))
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/browser/runs/${id}/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to complete fix verification.')
+      }
+
+      const report = data.verificationReport || data.verification
+
+      setEvidenceCache((prev) => {
+        const current = prev[id] || {}
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            verificationReport: report
+          }
+        }
+      })
+
+      setHistory((prev) =>
+        prev.map((item) => (item._id === id ? { ...item, verificationReport: report } : item))
+      )
+
+      fetchHistory()
+    } catch (err) {
+      setVerificationError((prev) => ({
+        ...prev,
+        [id]: err.message || 'An unexpected error occurred during verification.'
+      }))
+    } finally {
+      setVerificationLoading((prev) => ({ ...prev, [id]: false }))
+    }
+  }
+
+  const formatVerificationStatus = (status) => {
+    switch (status) {
+      case 'verified':
+        return 'Verified'
+      case 'partially_verified':
+        return 'Partially Verified'
+      case 'not_verified':
+        return 'Not Verified'
+      case 'no_baseline_findings':
+        return 'No Baseline Findings'
+      default:
+        return status || 'Unknown'
+    }
+  }
+
   const formatTimestamp = (dateString) => {
     if (!dateString) {
       return 'Unknown date'
@@ -317,6 +408,11 @@ function App() {
                 const currentAiAnalysis = evidence?.aiAnalysis
                 const dualApproach = currentAiAnalysis?.dualApproach || currentAiAnalysis?.approaches
                 const hasDualApproach = !!(dualApproach && (dualApproach.quickFix || dualApproach.structuralFix))
+                const isVerifying = !!verificationLoading[run._id]
+                const currentVerificationError = verificationError[run._id]
+                const currentVerification = evidence?.verificationReport || run.verificationReport
+                const runFindings = (evidence && Array.isArray(evidence.findings)) ? evidence.findings : (Array.isArray(run.findings) ? run.findings : [])
+                const hasFindings = runFindings.length > 0
 
                 return (
                   <article key={run._id} className="history-item">
@@ -338,14 +434,26 @@ function App() {
                       <time className="history-timestamp" dateTime={run.createdAt}>
                         {formatTimestamp(run.createdAt)}
                       </time>
-                      <button
-                        type="button"
-                        className="expand-button"
-                        onClick={() => handleToggleExpand(run._id)}
-                        aria-expanded={isExpanded}
-                      >
-                        {isExpanded ? 'Hide Evidence' : 'Inspect Evidence'}
-                      </button>
+                      <div className="history-actions">
+                        {hasFindings && (
+                          <button
+                            type="button"
+                            className="verify-fix-button"
+                            onClick={() => handleVerifyFix(run._id)}
+                            disabled={isVerifying}
+                          >
+                            {isVerifying ? 'Verifying Fix...' : (currentVerification ? 'Re-verify Fix' : 'Verify Fix')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="expand-button"
+                          onClick={() => handleToggleExpand(run._id)}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? 'Hide Evidence' : 'Inspect Evidence'}
+                        </button>
+                      </div>
                     </div>
 
                     {isExpanded && (
@@ -540,6 +648,154 @@ function App() {
 
                                     <div className="ai-disclaimer">
                                       AI suggestions are diagnostic recommendations and have not been automatically applied or verified.
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {hasFindings && (
+                              <div className="evidence-group verification-group">
+                                <div className="verification-section-header">
+                                  <div className="verification-title-wrapper">
+                                    <span className="verification-badge">Fix Verification</span>
+                                    <h4 className="evidence-group-title">Fix Verification & Comparison</h4>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="verify-fix-button verify-action-button"
+                                    onClick={() => handleVerifyFix(run._id)}
+                                    disabled={isVerifying}
+                                  >
+                                    {isVerifying ? 'Verifying Fix...' : (currentVerification ? 'Re-verify Fix' : 'Verify Fix')}
+                                  </button>
+                                </div>
+
+                                {isVerifying && (
+                                  <div className="verification-loading" role="status">
+                                    <div className="spinner"></div>
+                                    <div>
+                                      <p className="status-title">Verifying fix against live URL...</p>
+                                      <p className="status-detail">Running fresh browser test and comparing findings with baseline</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {currentVerificationError && !isVerifying && (
+                                  <div className="verification-error-banner" role="alert">
+                                    <div className="verification-error-content">
+                                      <span className="status-badge error-badge">Verification Error</span>
+                                      <p className="verification-error-text">{currentVerificationError}</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="verification-retry-button"
+                                      onClick={() => handleVerifyFix(run._id)}
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                )}
+
+                                {currentVerification && !isVerifying && (
+                                  <div className="verification-card">
+                                    <div className="verification-card-header">
+                                      <div className="verification-status-wrapper">
+                                        <span className="verification-status-label">Overall Status:</span>
+                                        <span className={`status-badge verification-status-badge verification-status-${currentVerification.status}`}>
+                                          {formatVerificationStatus(currentVerification.status)}
+                                        </span>
+                                      </div>
+                                      {currentVerification.verifiedAt && (
+                                        <time className="verification-timestamp" dateTime={currentVerification.verifiedAt}>
+                                          Verified: {formatTimestamp(currentVerification.verifiedAt)}
+                                        </time>
+                                      )}
+                                    </div>
+
+                                    <div className="verification-stats-grid">
+                                      <div className="stat-card stat-resolved">
+                                        <span className="stat-number">{currentVerification.summary?.resolved ?? 0}</span>
+                                        <span className="stat-label">Resolved Findings</span>
+                                      </div>
+                                      <div className="stat-card stat-persistent">
+                                        <span className="stat-number">{currentVerification.summary?.persistent ?? 0}</span>
+                                        <span className="stat-label">Persistent Findings</span>
+                                      </div>
+                                      <div className="stat-card stat-new">
+                                        <span className="stat-number">{currentVerification.summary?.new ?? 0}</span>
+                                        <span className="stat-label">New Findings</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="verification-category">
+                                      <h5 className="verification-category-title resolved-title">
+                                        Resolved Findings ({currentVerification.resolvedFindings?.length ?? 0})
+                                      </h5>
+                                      {Array.isArray(currentVerification.resolvedFindings) && currentVerification.resolvedFindings.length > 0 ? (
+                                        <ul className="verification-findings-list resolved-list">
+                                          {currentVerification.resolvedFindings.map((f, idx) => (
+                                            <li key={idx} className={`finding-item severity-${f.severity || 'low'} verification-finding-item`}>
+                                              <div className="finding-header">
+                                                <span className={`finding-severity severity-${f.severity || 'low'}`}>{f.severity}</span>
+                                                <span className="finding-type">{f.type}</span>
+                                                <span className="finding-title">{f.title}</span>
+                                              </div>
+                                              <p className="finding-description">{f.description}</p>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p className="evidence-empty verification-empty">No resolved findings.</p>
+                                      )}
+                                    </div>
+
+                                    <div className="verification-category">
+                                      <h5 className="verification-category-title persistent-title">
+                                        Persistent Findings ({currentVerification.persistentFindings?.length ?? 0})
+                                      </h5>
+                                      {Array.isArray(currentVerification.persistentFindings) && currentVerification.persistentFindings.length > 0 ? (
+                                        <ul className="verification-findings-list persistent-list">
+                                          {currentVerification.persistentFindings.map((f, idx) => (
+                                            <li key={idx} className={`finding-item severity-${f.severity || 'low'} verification-finding-item`}>
+                                              <div className="finding-header">
+                                                <span className={`finding-severity severity-${f.severity || 'low'}`}>{f.severity}</span>
+                                                <span className="finding-type">{f.type}</span>
+                                                <span className="finding-title">{f.title}</span>
+                                              </div>
+                                              <p className="finding-description">{f.description}</p>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p className="evidence-empty verification-empty">No persistent findings.</p>
+                                      )}
+                                    </div>
+
+                                    <div className="verification-category">
+                                      <h5 className="verification-category-title new-title">
+                                        New Findings or Regressions ({currentVerification.newFindings?.length ?? 0})
+                                      </h5>
+                                      {Array.isArray(currentVerification.newFindings) && currentVerification.newFindings.length > 0 ? (
+                                        <ul className="verification-findings-list new-list">
+                                          {currentVerification.newFindings.map((f, idx) => (
+                                            <li key={idx} className={`finding-item severity-${f.severity || 'low'} verification-finding-item`}>
+                                              <div className="finding-header">
+                                                <span className={`finding-severity severity-${f.severity || 'low'}`}>{f.severity}</span>
+                                                <span className="finding-type">{f.type}</span>
+                                                <span className="finding-title">{f.title}</span>
+                                              </div>
+                                              <p className="finding-description">{f.description}</p>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p className="evidence-empty verification-empty">No new findings or regressions detected.</p>
+                                      )}
+                                    </div>
+
+                                    <div className="verification-disclaimer">
+                                      Verification reflects observed differences between automated test runs and does not establish code causation.
                                     </div>
                                   </div>
                                 )}
