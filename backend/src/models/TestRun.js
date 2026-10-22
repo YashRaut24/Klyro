@@ -161,6 +161,15 @@ const testRunSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null
     },
+    verificationReport: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
+    baselineRunId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TestRun',
+      default: null
+    },
     screenshot: {
       type: String,
       default: null

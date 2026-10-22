@@ -6,6 +6,7 @@ import { runBrowser } from './browserRunner.js'
 import { TestRun } from './models/TestRun.js'
 import { analyzeFailures } from './failureAnalyzer.js'
 import { analyzeWithGroq } from './aiProvider.js'
+import { compareTestRuns } from './fixVerification.js'
 
 dotenv.config()
 
@@ -181,6 +182,91 @@ const handleAiAnalysis = async (req, res) => {
 app.post('/api/browser/runs/:id/ai-analysis', handleAiAnalysis)
 app.post('/api/browser/runs/:id/analyze', handleAiAnalysis)
 
+const inFlightVerifications = new Set()
+
+const handleVerifyRun = async (req, res) => {
+  const { id } = req.params
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({
+      error: 'Invalid test run ID'
+    })
+  }
+
+  if (inFlightVerifications.has(id)) {
+    return res.status(409).json({
+      error: 'Verification is already in progress for this test run'
+    })
+  }
+
+  inFlightVerifications.add(id)
+
+  try {
+    const baselineRun = await TestRun.findById(id)
+    if (!baselineRun) {
+      return res.status(404).json({
+        error: 'Test run not found'
+      })
+    }
+
+    const baselineObj = ensureFindings(baselineRun)
+
+    let freshResult
+    try {
+      freshResult = await runBrowser(baselineRun.url)
+    } catch (error) {
+      const message = error.message ? error.message.split('\n')[0] : 'Failed to navigate to website'
+      return res.status(502).json({
+        error: message
+      })
+    }
+
+    let freshTestRun
+    try {
+      const freshFindings = analyzeFailures(freshResult)
+      freshTestRun = await TestRun.create({
+        ...freshResult,
+        findings: freshFindings,
+        baselineRunId: id
+      })
+    } catch {
+      return res.status(500).json({
+        error: 'Failed to save verification test run'
+      })
+    }
+
+    const comparison = compareTestRuns(baselineObj, freshTestRun)
+    const verificationReport = {
+      ...comparison,
+      verifiedAt: new Date().toISOString()
+    }
+
+    try {
+      baselineRun.verificationReport = verificationReport
+      await baselineRun.save()
+    } catch {
+      return res.status(500).json({
+        error: 'Failed to persist verification report'
+      })
+    }
+
+    return res.json({
+      baselineRunId: id,
+      verificationRunId: freshTestRun._id.toString(),
+      verificationReport,
+      verification: verificationReport
+    })
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to complete verification'
+    })
+  } finally {
+    inFlightVerifications.delete(id)
+  }
+}
+
+app.post('/api/browser/runs/:id/verify', handleVerifyRun)
+
 const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI)
@@ -194,4 +280,9 @@ const startServer = async () => {
   }
 }
 
-startServer()
+if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('src/server.js')) {
+  startServer()
+}
+
+export { app, handleVerifyRun, inFlightVerifications, startServer }
+
