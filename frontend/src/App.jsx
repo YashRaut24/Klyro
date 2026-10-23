@@ -20,6 +20,7 @@ function App() {
   const [aiError, setAiError] = useState({})
   const [verificationLoading, setVerificationLoading] = useState({})
   const [verificationError, setVerificationError] = useState({})
+  const [filter, setFilter] = useState('all')
 
   const fetchHistory = async () => {
     setHistoryError(null)
@@ -261,6 +262,51 @@ function App() {
     }
   }
 
+  const formatFilterLabel = (filterKey) => {
+    switch (filterKey) {
+      case 'verified':
+        return 'Verified'
+      case 'partially_verified':
+        return 'Partially verified'
+      case 'not_verified':
+        return 'Not verified'
+      case 'new_findings':
+        return 'Runs with new findings'
+      default:
+        return 'All runs'
+    }
+  }
+
+  const filteredHistory = history.filter((run) => {
+    if (filter === 'all') {
+      return true
+    }
+
+    const report = evidenceCache[run._id]?.verificationReport || run.verificationReport
+    if (!report) {
+      return false
+    }
+
+    if (filter === 'verified') {
+      return report.status === 'verified'
+    }
+
+    if (filter === 'partially_verified') {
+      return report.status === 'partially_verified'
+    }
+
+    if (filter === 'not_verified') {
+      return report.status === 'not_verified'
+    }
+
+    if (filter === 'new_findings') {
+      const newCount = report.summary?.new ?? (Array.isArray(report.newFindings) ? report.newFindings.length : 0)
+      return newCount > 0
+    }
+
+    return true
+  })
+
   const formatTimestamp = (dateString) => {
     if (!dateString) {
       return 'Unknown date'
@@ -365,9 +411,71 @@ function App() {
             <h2 className="history-title">Test Run History</h2>
             {!isHistoryLoading && !historyError && (
               <span className="history-count">
-                {history.length} {history.length === 1 ? 'run' : 'runs'}
+                {filter === 'all'
+                  ? `${history.length} ${history.length === 1 ? 'run' : 'runs'}`
+                  : `${filteredHistory.length} of ${history.length} runs`}
               </span>
             )}
+          </div>
+
+          <div className="history-filter-controls">
+            <div className="history-filter-bar" role="toolbar" aria-label="Filter test runs">
+              <span className="filter-label">Filter:</span>
+              <div className="filter-buttons">
+                <button
+                  type="button"
+                  data-filter="all"
+                  className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+                  onClick={() => setFilter('all')}
+                >
+                  All runs
+                </button>
+                <button
+                  type="button"
+                  data-filter="verified"
+                  className={`filter-btn ${filter === 'verified' ? 'active' : ''}`}
+                  onClick={() => setFilter('verified')}
+                >
+                  Verified
+                </button>
+                <button
+                  type="button"
+                  data-filter="partially_verified"
+                  className={`filter-btn ${filter === 'partially_verified' ? 'active' : ''}`}
+                  onClick={() => setFilter('partially_verified')}
+                >
+                  Partially verified
+                </button>
+                <button
+                  type="button"
+                  data-filter="not_verified"
+                  className={`filter-btn ${filter === 'not_verified' ? 'active' : ''}`}
+                  onClick={() => setFilter('not_verified')}
+                >
+                  Not verified
+                </button>
+                <button
+                  type="button"
+                  data-filter="new_findings"
+                  className={`filter-btn ${filter === 'new_findings' ? 'active' : ''}`}
+                  onClick={() => setFilter('new_findings')}
+                >
+                  Runs with new findings
+                </button>
+              </div>
+            </div>
+            <select
+              className="history-filter-select"
+              aria-label="Filter test runs select"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              <option value="all">All runs</option>
+              <option value="verified">Verified</option>
+              <option value="partially_verified">Partially verified</option>
+              <option value="not_verified">Not verified</option>
+              <option value="new_findings">Runs with new findings</option>
+            </select>
           </div>
 
           {isHistoryLoading && (
@@ -395,9 +503,25 @@ function App() {
             </div>
           )}
 
-          {!isHistoryLoading && !historyError && history.length > 0 && (
+          {!isHistoryLoading && !historyError && history.length > 0 && filteredHistory.length === 0 && (
+            <div className="history-card history-empty filter-empty">
+              <p className="empty-title">No matching test runs</p>
+              <p className="empty-subtitle">
+                No test runs match the selected filter ({formatFilterLabel(filter)}).
+              </p>
+              <button
+                type="button"
+                className="filter-reset-button"
+                onClick={() => setFilter('all')}
+              >
+                Show all runs
+              </button>
+            </div>
+          )}
+
+          {!isHistoryLoading && !historyError && filteredHistory.length > 0 && (
             <div className="history-list">
-              {history.map((run) => {
+              {filteredHistory.map((run) => {
                 const isSuccess = run.status >= 200 && run.status < 400
                 const isExpanded = !!expandedIds[run._id]
                 const evidence = evidenceCache[run._id]
@@ -414,6 +538,28 @@ function App() {
                 const runFindings = (evidence && Array.isArray(evidence.findings)) ? evidence.findings : (Array.isArray(run.findings) ? run.findings : [])
                 const hasFindings = runFindings.length > 0
 
+                const isVerificationRun = Boolean(run.baselineRunId)
+                const relatedBaselineId = run.baselineRunId
+                  ? (typeof run.baselineRunId === 'object'
+                      ? (run.baselineRunId._id || run.baselineRunId.toString())
+                      : String(run.baselineRunId))
+                  : null
+
+                const linkedVerificationRun = history.find((r) => {
+                  if (!r.baselineRunId) return false
+                  const bId = typeof r.baselineRunId === 'object'
+                    ? (r.baselineRunId._id || r.baselineRunId.toString())
+                    : String(r.baselineRunId)
+                  return bId === String(run._id)
+                })
+                const rawVerificationId = currentVerification?.verificationRunId || linkedVerificationRun?._id
+                const relatedVerificationId = rawVerificationId
+                  ? (typeof rawVerificationId === 'object'
+                      ? (rawVerificationId._id || rawVerificationId.toString())
+                      : String(rawVerificationId))
+                  : null
+                const isBaselineRun = !isVerificationRun && (Boolean(relatedVerificationId) || Boolean(currentVerification))
+
                 return (
                   <article key={run._id} className="history-item">
                     <div className="history-item-header">
@@ -424,10 +570,39 @@ function App() {
                       <span className={`status-pill ${isSuccess ? 'status-ok' : 'status-warn'}`}>
                         {run.status ? `HTTP ${run.status}` : 'No Status'}
                       </span>
+                      {currentVerification && currentVerification.status && (
+                        <span className={`status-badge history-verification-badge verification-status-badge verification-status-${currentVerification.status}`}>
+                          {formatVerificationStatus(currentVerification.status)}
+                        </span>
+                      )}
                     </div>
 
                     <div className="history-item-body">
                       <span className="history-page-title">{run.title || 'Untitled page'}</span>
+                      {(isBaselineRun || isVerificationRun) && (
+                        <div className="history-item-meta">
+                          {isBaselineRun && (
+                            <div className="run-linkage-wrapper">
+                              <span className="run-type-badge run-type-baseline">Baseline Run</span>
+                              {relatedVerificationId && (
+                                <span className="run-linkage-info">
+                                  Verification Run: <span className="related-run-id">{relatedVerificationId}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {isVerificationRun && (
+                            <div className="run-linkage-wrapper">
+                              <span className="run-type-badge run-type-verification">Verification Run</span>
+                              {relatedBaselineId && (
+                                <span className="run-linkage-info">
+                                  Baseline Run: <span className="related-run-id">{relatedBaselineId}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="history-item-footer">

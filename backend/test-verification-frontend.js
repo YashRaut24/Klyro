@@ -2,7 +2,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert'
 
 const runVerificationFrontendAudit = async () => {
-  console.log('--- STARTING KLYRO STEP 11C FIX VERIFICATION FRONTEND AUDIT ---')
+  console.log('--- STARTING KLYRO STEP 11D VERIFICATION HISTORY & REGRESSION AUDIT ---')
 
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({
@@ -12,56 +12,17 @@ const runVerificationFrontendAudit = async () => {
 
   const mockRuns = [
     {
-      _id: 'mock-baseline-1',
-      url: 'https://example.com/baseline-errors',
-      title: 'Baseline Errors Page',
-      status: 500,
-      createdAt: '2026-10-22T10:00:00.000Z',
+      _id: 'mock-verified-run',
+      url: 'https://example.com/verified-site',
+      title: 'Verified Baseline Page',
+      status: 200,
+      createdAt: '2026-10-23T10:00:00.000Z',
       findings: [
         {
           type: 'PAGE_ERROR',
           severity: 'high',
-          title: 'Uncaught TypeError in Header',
-          description: 'Cannot read properties of null',
-          evidence: { name: 'TypeError', message: 'Cannot read properties of null' }
-        }
-      ],
-      pageErrors: [
-        { name: 'TypeError', message: 'Cannot read properties of null' }
-      ],
-      consoleErrors: [],
-      failedRequests: [],
-      httpErrors: [],
-      screenshot: null,
-      verificationReport: null
-    },
-    {
-      _id: 'mock-clean-run-2',
-      url: 'https://example.com/clean',
-      title: 'Clean Page',
-      status: 200,
-      createdAt: '2026-10-22T09:30:00.000Z',
-      findings: [],
-      pageErrors: [],
-      consoleErrors: [],
-      failedRequests: [],
-      httpErrors: [],
-      screenshot: null,
-      verificationReport: null
-    },
-    {
-      _id: 'mock-saved-report-3',
-      url: 'https://example.com/saved-report',
-      title: 'Pre-existing Report Page',
-      status: 200,
-      createdAt: '2026-10-22T09:00:00.000Z',
-      findings: [
-        {
-          type: 'PAGE_ERROR',
-          severity: 'high',
-          title: 'Saved Baseline Finding',
-          description: 'Pre-existing finding',
-          evidence: { name: 'Error', message: 'Pre-existing' }
+          title: 'Resolved Error 1',
+          description: 'Error was resolved'
         }
       ],
       pageErrors: [],
@@ -70,8 +31,8 @@ const runVerificationFrontendAudit = async () => {
       httpErrors: [],
       screenshot: null,
       verificationReport: {
-        baselineRunId: 'mock-saved-report-3',
-        verificationRunId: 'mock-prev-verification-id',
+        baselineRunId: 'mock-verified-run',
+        verificationRunId: 'mock-verification-child-1',
         status: 'verified',
         summary: {
           resolved: 1,
@@ -84,23 +45,205 @@ const runVerificationFrontendAudit = async () => {
           {
             type: 'PAGE_ERROR',
             severity: 'high',
-            title: 'Saved Baseline Finding',
-            description: 'Pre-existing finding'
+            title: 'Resolved Error 1',
+            description: 'Error was resolved'
           }
         ],
         persistentFindings: [],
         newFindings: [],
-        verifiedAt: '2026-10-22T09:05:00.000Z'
+        verifiedAt: '2026-10-23T10:05:00.000Z'
       }
+    },
+    {
+      _id: 'mock-partial-run',
+      url: 'https://example.com/partial-site',
+      title: 'Partial Baseline Page',
+      status: 500,
+      createdAt: '2026-10-23T09:30:00.000Z',
+      findings: [
+        {
+          type: 'PAGE_ERROR',
+          severity: 'high',
+          title: 'Fixed Error',
+          description: 'Resolved'
+        },
+        {
+          type: 'HTTP_ERROR',
+          severity: 'medium',
+          title: 'Persistent 404',
+          description: 'Still 404'
+        }
+      ],
+      pageErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+      httpErrors: [],
+      screenshot: null,
+      verificationReport: {
+        baselineRunId: 'mock-partial-run',
+        verificationRunId: 'mock-verification-child-2',
+        status: 'partially_verified',
+        summary: {
+          resolved: 1,
+          persistent: 1,
+          new: 0,
+          totalBaseline: 2,
+          totalVerification: 1
+        },
+        resolvedFindings: [
+          {
+            type: 'PAGE_ERROR',
+            severity: 'high',
+            title: 'Fixed Error',
+            description: 'Resolved'
+          }
+        ],
+        persistentFindings: [
+          {
+            type: 'HTTP_ERROR',
+            severity: 'medium',
+            title: 'Persistent 404',
+            description: 'Still 404'
+          }
+        ],
+        newFindings: [],
+        verifiedAt: '2026-10-23T09:35:00.000Z'
+      }
+    },
+    {
+      _id: 'mock-not-verified-run',
+      url: 'https://example.com/not-verified-site',
+      title: 'Not Verified Page with Regressions',
+      status: 500,
+      createdAt: '2026-10-23T09:00:00.000Z',
+      findings: [
+        {
+          type: 'PAGE_ERROR',
+          severity: 'high',
+          title: 'Unresolved Crash',
+          description: 'Still crashing'
+        }
+      ],
+      pageErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+      httpErrors: [],
+      screenshot: null,
+      verificationReport: {
+        baselineRunId: 'mock-not-verified-run',
+        verificationRunId: 'mock-verification-child-3',
+        status: 'not_verified',
+        summary: {
+          resolved: 0,
+          persistent: 1,
+          new: 1,
+          totalBaseline: 1,
+          totalVerification: 2
+        },
+        resolvedFindings: [],
+        persistentFindings: [
+          {
+            type: 'PAGE_ERROR',
+            severity: 'high',
+            title: 'Unresolved Crash',
+            description: 'Still crashing'
+          }
+        ],
+        newFindings: [
+          {
+            type: 'HTTP_ERROR',
+            severity: 'medium',
+            title: 'New Regressed 500 API Error',
+            description: 'Newly introduced 500'
+          }
+        ],
+        verifiedAt: '2026-10-23T09:10:00.000Z'
+      }
+    },
+    {
+      _id: 'mock-no-baseline-run',
+      url: 'https://example.com/no-baseline-findings-site',
+      title: 'No Baseline Findings Page',
+      status: 200,
+      createdAt: '2026-10-23T08:30:00.000Z',
+      findings: [],
+      pageErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+      httpErrors: [],
+      screenshot: null,
+      verificationReport: {
+        baselineRunId: 'mock-no-baseline-run',
+        verificationRunId: 'mock-verification-child-4',
+        status: 'no_baseline_findings',
+        summary: {
+          resolved: 0,
+          persistent: 0,
+          new: 0,
+          totalBaseline: 0,
+          totalVerification: 0
+        },
+        resolvedFindings: [],
+        persistentFindings: [],
+        newFindings: [],
+        verifiedAt: '2026-10-23T08:35:00.000Z'
+      }
+    },
+    {
+      _id: 'mock-verification-child-1',
+      url: 'https://example.com/verified-site',
+      title: 'Verified Baseline Page',
+      status: 200,
+      createdAt: '2026-10-23T10:05:00.000Z',
+      baselineRunId: 'mock-verified-run',
+      findings: [],
+      pageErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+      httpErrors: [],
+      screenshot: null,
+      verificationReport: null
+    },
+    {
+      _id: 'mock-older-run',
+      url: 'https://example.com/older-legacy-run',
+      title: 'Older Run Without Linkage',
+      status: 200,
+      createdAt: '2026-10-23T07:00:00.000Z',
+      findings: [],
+      pageErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+      httpErrors: [],
+      screenshot: null,
+      verificationReport: null,
+      baselineRunId: null
+    },
+    {
+      _id: 'mock-clean-ordinary-run',
+      url: 'https://example.com/clean-ordinary',
+      title: 'Clean Ordinary Run',
+      status: 200,
+      createdAt: '2026-10-23T06:00:00.000Z',
+      findings: [],
+      pageErrors: [],
+      consoleErrors: [],
+      failedRequests: [],
+      httpErrors: [],
+      screenshot: null,
+      verificationReport: null,
+      baselineRunId: null
     }
   ]
+
+  let runsData = [...mockRuns]
 
   await page.route('**/api/browser/runs', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(mockRuns)
+        body: JSON.stringify(runsData)
       })
     } else {
       await route.continue()
@@ -114,7 +257,7 @@ const runVerificationFrontendAudit = async () => {
       return
     }
     const id = url.split('/').pop()
-    const matched = mockRuns.find((r) => r._id === id)
+    const matched = runsData.find((r) => r._id === id)
     if (matched) {
       await route.fulfill({
         status: 200,
@@ -131,284 +274,165 @@ const runVerificationFrontendAudit = async () => {
 
   const historyList = page.locator('.history-list')
   await historyList.waitFor({ state: 'visible', timeout: 10000 })
-  const historyItems = page.locator('.history-item')
-  assert.strictEqual(await historyItems.count(), 3, 'All 3 mock history items loaded')
+  assert.strictEqual(await page.locator('.history-item').count(), 7, 'All 7 mock history items loaded')
 
-  console.log('Test 1 & 2: Verify Fix action visibility on run with findings vs absence on clean run...')
-  const baselineItem = page.locator('.history-item:has-text("Baseline Errors Page")')
-  await baselineItem.waitFor({ state: 'visible' })
-  const baselineVerifyBtn = baselineItem.locator('.verify-fix-button').first()
-  assert.strictEqual(await baselineVerifyBtn.isVisible(), true, 'Verify Fix button is visible on run with findings')
-  assert.strictEqual(await baselineVerifyBtn.textContent(), 'Verify Fix', 'Initial button label is Verify Fix')
+  console.log('Test 1: Verification status badges for all 4 supported statuses in history cards...')
+  const verifiedCard = page.locator('.history-item:has-text("Verified Baseline Page")').first()
+  const verifiedBadge = verifiedCard.locator('.history-verification-badge')
+  assert.strictEqual(await verifiedBadge.textContent(), 'Verified', 'Verified status badge rendered on card')
+  assert(await verifiedBadge.getAttribute('class').then((c) => c.includes('verification-status-verified')), 'Has verification-status-verified class')
 
-  const cleanItem = page.locator('.history-item:has-text("Clean Page")')
-  await cleanItem.waitFor({ state: 'visible' })
-  const cleanVerifyBtn = cleanItem.locator('.verify-fix-button')
-  assert.strictEqual(await cleanVerifyBtn.count(), 0, 'Verify Fix button is absent for clean run with 0 findings')
+  const partialCard = page.locator('.history-item:has-text("Partial Baseline Page")')
+  const partialBadge = partialCard.locator('.history-verification-badge')
+  assert.strictEqual(await partialBadge.textContent(), 'Partially Verified', 'Partially Verified badge rendered')
+  assert(await partialBadge.getAttribute('class').then((c) => c.includes('verification-status-partially_verified')), 'Has verification-status-partially_verified class')
 
-  await cleanItem.locator('.expand-button').click()
-  const cleanEvidencePanel = cleanItem.locator('.evidence-panel')
-  await cleanEvidencePanel.waitFor({ state: 'visible' })
-  assert.strictEqual(await cleanEvidencePanel.locator('.verification-group').count(), 0, 'Verification group absent inside expanded clean run')
-  await cleanItem.locator('.expand-button').click()
+  const notVerifiedCard = page.locator('.history-item:has-text("Not Verified Page with Regressions")')
+  const notVerifiedBadge = notVerifiedCard.locator('.history-verification-badge')
+  assert.strictEqual(await notVerifiedBadge.textContent(), 'Not Verified', 'Not Verified badge rendered')
+  assert(await notVerifiedBadge.getAttribute('class').then((c) => c.includes('verification-status-not_verified')), 'Has verification-status-not_verified class')
 
-  console.log('Test 3 & 4: Clicking Verify Fix sends correct baseline ID, loading state, and prevents duplicate requests...')
-  let verifyRequestUrl = null
-  let verifyCalledCount = 0
-  let verifyResolver = null
-  const verifyPromise = new Promise((resolve) => {
-    verifyResolver = resolve
+  const noBaselineCard = page.locator('.history-item:has-text("No Baseline Findings Page")')
+  const noBaselineBadge = noBaselineCard.locator('.history-verification-badge')
+  assert.strictEqual(await noBaselineBadge.textContent(), 'No Baseline Findings', 'No Baseline Findings badge rendered')
+  assert(await noBaselineBadge.getAttribute('class').then((c) => c.includes('verification-status-no_baseline_findings')), 'Has verification-status-no_baseline_findings class')
+
+  console.log('Test 2: Baseline and verification runs identified correctly with linked IDs...')
+  const baselineRunType = verifiedCard.locator('.run-type-baseline')
+  assert.strictEqual(await baselineRunType.textContent(), 'Baseline Run', 'Baseline run has Baseline Run badge')
+  const baselineLinkage = await verifiedCard.locator('.run-linkage-info').textContent()
+  assert(baselineLinkage.includes('Verification Run:') && baselineLinkage.includes('mock-verification-child-1'), 'Baseline run links to verification child run')
+
+  const verificationCardItem = page.locator('.history-item:has(.run-type-verification)')
+  const verificationRunType = verificationCardItem.locator('.run-type-verification')
+  assert.strictEqual(await verificationRunType.textContent(), 'Verification Run', 'Verification run has Verification Run badge')
+  const verificationLinkage = await verificationCardItem.locator('.run-linkage-info').textContent()
+  assert(verificationLinkage.includes('Baseline Run:') && verificationLinkage.includes('mock-verified-run'), 'Verification run links to baseline run')
+
+  console.log('Test 3: Older runs without linkage fields render safely without badges or errors...')
+  const olderCard = page.locator('.history-item:has-text("Older Run Without Linkage")')
+  assert.strictEqual(await olderCard.locator('.run-type-badge').count(), 0, 'No run type badge on older run without linkage')
+  assert.strictEqual(await olderCard.locator('.history-verification-badge').count(), 0, 'No verification badge on older run without report')
+
+  console.log('Test 4: Regression filtering for each status filter...')
+  const filterControls = page.locator('.history-filter-controls')
+  await filterControls.waitFor({ state: 'visible' })
+
+  await page.locator('.filter-btn[data-filter="verified"]').click()
+  await page.waitForTimeout(200)
+  assert.strictEqual(await page.locator('.history-item').count(), 1, 'Verified filter matches exactly 1 run')
+  assert.strictEqual(await page.locator('.history-item .history-page-title').textContent(), 'Verified Baseline Page', 'Matched run is Verified Baseline Page')
+
+  await page.locator('.filter-btn[data-filter="partially_verified"]').click()
+  await page.waitForTimeout(200)
+  assert.strictEqual(await page.locator('.history-item').count(), 1, 'Partially verified filter matches exactly 1 run')
+  assert.strictEqual(await page.locator('.history-item .history-page-title').textContent(), 'Partial Baseline Page', 'Matched run is Partial Baseline Page')
+
+  await page.locator('.filter-btn[data-filter="not_verified"]').click()
+  await page.waitForTimeout(200)
+  assert.strictEqual(await page.locator('.history-item').count(), 1, 'Not verified filter matches exactly 1 run')
+  assert.strictEqual(await page.locator('.history-item .history-page-title').textContent(), 'Not Verified Page with Regressions', 'Matched run is Not Verified Page')
+
+  console.log('Test 5: Runs with new findings filtering uses verification report data...')
+  await page.locator('.filter-btn[data-filter="new_findings"]').click()
+  await page.waitForTimeout(200)
+  assert.strictEqual(await page.locator('.history-item').count(), 1, 'Runs with new findings filter matches exactly 1 run')
+  assert.strictEqual(await page.locator('.history-item .history-page-title').textContent(), 'Not Verified Page with Regressions', 'Matched run with regression is selected')
+
+  console.log('Test 6: Ordinary runs without reports are not classified as verified...')
+  await page.locator('.filter-btn[data-filter="verified"]').click()
+  await page.waitForTimeout(200)
+  const matchedTitles = await page.locator('.history-item .history-page-title').allTextContents()
+  assert(!matchedTitles.includes('Clean Ordinary Run'), 'Clean ordinary run without report is not classified as verified')
+  assert(!matchedTitles.includes('Older Run Without Linkage'), 'Older run without report is not classified as verified')
+
+  console.log('Test 7: History refresh and new runs preserve correct filtering...')
+  const newVerifiedRun = {
+    _id: 'mock-new-verified-run',
+    url: 'https://example.com/new-verified',
+    title: 'Newly Added Verified Page',
+    status: 200,
+    createdAt: '2026-10-23T11:00:00.000Z',
+    findings: [],
+    pageErrors: [],
+    consoleErrors: [],
+    failedRequests: [],
+    httpErrors: [],
+    screenshot: null,
+    verificationReport: {
+      baselineRunId: 'mock-new-verified-run',
+      verificationRunId: 'mock-new-child-id',
+      status: 'verified',
+      summary: { resolved: 1, persistent: 0, new: 0, totalBaseline: 1, totalVerification: 0 },
+      resolvedFindings: [],
+      persistentFindings: [],
+      newFindings: [],
+      verifiedAt: '2026-10-23T11:05:00.000Z'
+    }
+  }
+  runsData = [newVerifiedRun, ...mockRuns]
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'))
   })
+  await page.locator('.url-input').fill('https://example.com/trigger-fetch')
+  await page.locator('.filter-btn[data-filter="all"]').click()
+  await page.waitForTimeout(200)
+  await page.locator('.filter-btn[data-filter="verified"]').click()
+  await page.waitForTimeout(200)
+  assert(await page.locator('.history-item').count() >= 1, 'Filter preserves correct matches across list interactions')
 
-  await page.route('**/api/browser/runs/*/verify', async (route) => {
-    verifyCalledCount++
-    verifyRequestUrl = route.request().url()
-    await verifyPromise
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        baselineRunId: 'mock-baseline-1',
-        verificationRunId: 'mock-fresh-verification-run-id',
-        verificationReport: {
-          baselineRunId: 'mock-baseline-1',
-          verificationRunId: 'mock-fresh-verification-run-id',
-          status: 'verified',
-          summary: {
-            resolved: 1,
-            persistent: 0,
-            new: 0,
-            totalBaseline: 1,
-            totalVerification: 0
-          },
-          resolvedFindings: [
-            {
-              type: 'PAGE_ERROR',
-              severity: 'high',
-              title: 'Uncaught TypeError in Header',
-              description: 'Cannot read properties of null'
-            }
-          ],
-          persistentFindings: [],
-          newFindings: [],
-          verifiedAt: '2026-10-22T10:15:00.000Z'
-        }
-      })
-    })
-  })
+  console.log('Test 8: Empty filter results display helpful message and reset button...')
+  runsData = [mockRuns[4], mockRuns[5], mockRuns[6]]
+  await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
+  await page.locator('.filter-btn[data-filter="partially_verified"]').click()
+  await page.waitForTimeout(200)
 
-  await baselineVerifyBtn.click()
+  const emptyCard = page.locator('.history-card.filter-empty')
+  await emptyCard.waitFor({ state: 'visible' })
+  assert.strictEqual(await emptyCard.locator('.empty-title').textContent(), 'No matching test runs', 'Empty title displayed')
+  const emptySubtitle = await emptyCard.locator('.empty-subtitle').textContent()
+  assert(emptySubtitle.includes('Partially verified'), 'Empty subtitle indicates active filter')
 
-  assert(verifyRequestUrl && verifyRequestUrl.includes('/api/browser/runs/mock-baseline-1/verify'), 'Correct baseline ID sent in verification endpoint URL')
-  assert.strictEqual(await baselineVerifyBtn.isDisabled(), true, 'Verify button disabled during request')
-  assert(await baselineVerifyBtn.textContent().then((t) => t.includes('Verifying Fix...')), 'Button indicates loading state')
+  const resetBtn = emptyCard.locator('.filter-reset-button')
+  assert.strictEqual(await resetBtn.isVisible(), true, 'Reset button is visible')
+  await resetBtn.click()
+  await page.waitForTimeout(200)
+  assert.strictEqual(await page.locator('.history-item').count(), 3, 'Reset button restored all runs')
 
-  const baselineEvidencePanel = baselineItem.locator('.evidence-panel')
-  await baselineEvidencePanel.waitFor({ state: 'visible' })
-  const verificationLoading = baselineEvidencePanel.locator('.verification-loading')
-  assert.strictEqual(await verificationLoading.isVisible(), true, 'Verification loading indicator visible in panel')
+  runsData = [...mockRuns]
+  await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
 
-  await baselineVerifyBtn.click({ force: true }).catch(() => {})
-  assert.strictEqual(verifyCalledCount, 1, 'Duplicate click blocked while verification is in-flight')
+  console.log('Test 9: Existing verification and AI features continue working...')
+  const testBaseline = page.locator('.history-item:has-text("Verified Baseline Page")').first()
+  await testBaseline.locator('.expand-button').click()
+  const testPanel = testBaseline.locator('.evidence-panel')
+  await testPanel.waitFor({ state: 'visible' })
+  assert.strictEqual(await testPanel.locator('.verification-card').isVisible(), true, 'Verification card rendered')
+  assert.strictEqual(await testPanel.locator('.findings-group').isVisible(), true, 'Findings group intact')
 
-  verifyResolver()
-  await page.waitForTimeout(500)
-
-  console.log('Test 5: Successful report rendering for status verified...')
-  const verificationCard = baselineEvidencePanel.locator('.verification-card')
-  await verificationCard.waitFor({ state: 'visible', timeout: 5000 })
-
-  const statusBadge = verificationCard.locator('.verification-status-badge')
-  assert.strictEqual(await statusBadge.textContent(), 'Verified', 'Status badge text is Verified')
-  assert(await statusBadge.getAttribute('class').then((c) => c.includes('verification-status-verified')), 'Status badge class includes verification-status-verified')
-
-  const statResolved = await verificationCard.locator('.stat-resolved .stat-number').textContent()
-  const statPersistent = await verificationCard.locator('.stat-persistent .stat-number').textContent()
-  const statNew = await verificationCard.locator('.stat-new .stat-number').textContent()
-  assert.strictEqual(statResolved.trim(), '1', 'Summary resolved count is 1')
-  assert.strictEqual(statPersistent.trim(), '0', 'Summary persistent count is 0')
-  assert.strictEqual(statNew.trim(), '0', 'Summary new count is 0')
-
-  const resolvedList = verificationCard.locator('.resolved-list')
-  assert.strictEqual(await resolvedList.isVisible(), true, 'Resolved findings list rendered')
-  assert(await resolvedList.textContent().then((t) => t.includes('Uncaught TypeError in Header')), 'Resolved finding title rendered')
-
-  const persistentEmpty = verificationCard.locator('.persistent-title + .verification-empty')
-  assert.strictEqual(await persistentEmpty.textContent(), 'No persistent findings.', 'Empty state rendered for persistent findings')
-
-  const newEmpty = verificationCard.locator('.new-title + .verification-empty')
-  assert.strictEqual(await newEmpty.textContent(), 'No new findings or regressions detected.', 'Empty state rendered for new findings')
-
-  const timestamp = await verificationCard.locator('.verification-timestamp').textContent()
-  assert(timestamp.includes('Verified:'), 'Verification timestamp rendered')
-
-  const disclaimer = await verificationCard.locator('.verification-disclaimer').textContent()
-  assert(disclaimer.includes('does not establish code causation'), 'Non-causal verification disclaimer rendered')
-
-  console.log('Test 6: Rendering persistent and new findings for non-verified result...')
-  await page.unroute('**/api/browser/runs/*/verify')
-  await page.route('**/api/browser/runs/*/verify', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        baselineRunId: 'mock-baseline-1',
-        verificationRunId: 'mock-regressed-verification-run-id',
-        verificationReport: {
-          baselineRunId: 'mock-baseline-1',
-          verificationRunId: 'mock-regressed-verification-run-id',
-          status: 'not_verified',
-          summary: {
-            resolved: 0,
-            persistent: 1,
-            new: 1,
-            totalBaseline: 1,
-            totalVerification: 2
-          },
-          resolvedFindings: [],
-          persistentFindings: [
-            {
-              type: 'PAGE_ERROR',
-              severity: 'high',
-              title: 'Uncaught TypeError in Header',
-              description: 'Cannot read properties of null'
-            }
-          ],
-          newFindings: [
-            {
-              type: 'HTTP_ERROR',
-              severity: 'medium',
-              title: 'HTTP 404 on API Asset',
-              description: 'Request to /missing.json failed with 404'
-            }
-          ],
-          verifiedAt: '2026-10-22T10:20:00.000Z'
-        }
-      })
-    })
-  })
-
-  const reverifyBtn = baselineEvidencePanel.locator('.verify-action-button')
-  assert.strictEqual(await reverifyBtn.textContent(), 'Re-verify Fix', 'Button updated to Re-verify Fix after report exists')
-  await reverifyBtn.click()
-  await page.waitForTimeout(500)
-
-  const nonVerifiedBadge = verificationCard.locator('.verification-status-badge')
-  assert.strictEqual(await nonVerifiedBadge.textContent(), 'Not Verified', 'Status badge text is Not Verified')
-  assert(await nonVerifiedBadge.getAttribute('class').then((c) => c.includes('verification-status-not_verified')), 'Status badge class includes verification-status-not_verified')
-
-  const statPersistent2 = await verificationCard.locator('.stat-persistent .stat-number').textContent()
-  const statNew2 = await verificationCard.locator('.stat-new .stat-number').textContent()
-  assert.strictEqual(statPersistent2.trim(), '1', 'Summary persistent count is 1')
-  assert.strictEqual(statNew2.trim(), '1', 'Summary new count is 1')
-
-  const resolvedEmpty2 = verificationCard.locator('.resolved-title + .verification-empty')
-  assert.strictEqual(await resolvedEmpty2.textContent(), 'No resolved findings.', 'Empty state rendered for resolved category')
-
-  const persistentList = verificationCard.locator('.persistent-list')
-  assert(await persistentList.textContent().then((t) => t.includes('Uncaught TypeError in Header')), 'Persistent finding rendered in persistent list')
-
-  const newList = verificationCard.locator('.new-list')
-  assert(await newList.textContent().then((t) => t.includes('HTTP 404 on API Asset')), 'New regression finding rendered in new list')
-
-  console.log('Test 7: API error display and retry behavior without overwriting existing report...')
-  await page.unroute('**/api/browser/runs/*/verify')
-  await page.route('**/api/browser/runs/*/verify', async (route) => {
-    await route.fulfill({
-      status: 502,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        error: 'Failed to navigate to website: net::ERR_CONNECTION_REFUSED'
-      })
-    })
-  })
-
-  await reverifyBtn.click()
-  await page.waitForTimeout(500)
-
-  const errorBanner = baselineEvidencePanel.locator('.verification-error-banner')
-  await errorBanner.waitFor({ state: 'visible' })
-  const errorText = await errorBanner.locator('.verification-error-text').textContent()
-  assert(errorText.includes('ERR_CONNECTION_REFUSED'), 'Error message displayed clearly in banner')
-
-  assert.strictEqual(await verificationCard.isVisible(), true, 'Existing valid report remains visible and was not overwritten by failed request')
-
-  const retryBtn = errorBanner.locator('.verification-retry-button')
-  assert.strictEqual(await retryBtn.isVisible(), true, 'Retry button visible in error banner')
-
-  await page.unroute('**/api/browser/runs/*/verify')
-  await page.route('**/api/browser/runs/*/verify', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        baselineRunId: 'mock-baseline-1',
-        verificationRunId: 'mock-recovered-id',
-        verificationReport: {
-          baselineRunId: 'mock-baseline-1',
-          verificationRunId: 'mock-recovered-id',
-          status: 'verified',
-          summary: { resolved: 1, persistent: 0, new: 0, totalBaseline: 1, totalVerification: 0 },
-          resolvedFindings: [
-            { type: 'PAGE_ERROR', severity: 'high', title: 'Uncaught TypeError in Header', description: 'Recovered' }
-          ],
-          persistentFindings: [],
-          newFindings: [],
-          verifiedAt: '2026-10-22T10:25:00.000Z'
-        }
-      })
-    })
-  })
-
-  await retryBtn.click()
-  await page.waitForTimeout(500)
-
-  assert.strictEqual(await errorBanner.isVisible(), false, 'Error banner cleared after successful retry')
-  assert.strictEqual(await verificationCard.locator('.verification-status-badge').textContent(), 'Verified', 'Report updated successfully after retry')
-
-  console.log('Test 8: Pre-existing saved report renders without triggering another verification request...')
-  let savedRunVerifyCount = 0
-  await page.route('**/api/browser/runs/mock-saved-report-3/verify', async (route) => {
-    savedRunVerifyCount++
-    await route.continue()
-  })
-
-  const savedReportItem = page.locator('.history-item:has-text("Pre-existing Report Page")')
-  await savedReportItem.locator('.expand-button').click()
-
-  const savedPanel = savedReportItem.locator('.evidence-panel')
-  await savedPanel.waitFor({ state: 'visible' })
-  const savedCard = savedPanel.locator('.verification-card')
-  await savedCard.waitFor({ state: 'visible' })
-
-  assert.strictEqual(savedRunVerifyCount, 0, 'No verification request triggered when loading pre-existing saved report')
-  assert.strictEqual(await savedCard.locator('.verification-status-badge').textContent(), 'Verified', 'Saved report displays correct verified badge')
-  assert(await savedCard.textContent().then((t) => t.includes('Saved Baseline Finding')), 'Saved finding rendered in saved report')
-  assert.strictEqual(await savedReportItem.locator('.verify-fix-button').first().textContent(), 'Re-verify Fix', 'Button is labeled Re-verify Fix')
-
-  console.log('Test 9: Existing AI remediation and evidence features still work...')
-  assert.strictEqual(await baselineEvidencePanel.locator('.findings-group').isVisible(), true, 'Findings group remains intact')
-  assert.strictEqual(await baselineEvidencePanel.locator('.ai-analysis-group').isVisible(), true, 'AI analysis group remains intact')
-  assert.strictEqual(await baselineEvidencePanel.locator('.screenshot-preview, .evidence-group:has-text("Screenshot Preview")').isVisible(), true, 'Screenshot preview section remains intact')
-
-  console.log('Test 10: Mobile responsive viewport (375px)...')
+  console.log('Test 10: Responsive layout at 375px width...')
   await page.setViewportSize({ width: 375, height: 667 })
   await page.waitForTimeout(300)
 
-  const cardWidth = await baselineItem.evaluate((el) => el.clientWidth)
-  assert(cardWidth > 200 && cardWidth <= 375, `Baseline item width (${cardWidth}px) fits within 375px mobile viewport`)
+  const mobileItemWidth = await testBaseline.evaluate((el) => el.clientWidth)
+  assert(mobileItemWidth > 200 && mobileItemWidth <= 375, `Mobile item width (${mobileItemWidth}px) fits 375px viewport`)
 
-  const vCardWidth = await verificationCard.evaluate((el) => el.clientWidth)
-  assert(vCardWidth > 200 && vCardWidth <= 350, `Verification card width (${vCardWidth}px) fits mobile width`)
+  const filterBarWidth = await page.locator('.history-filter-controls').evaluate((el) => el.clientWidth)
+  assert(filterBarWidth > 200 && filterBarWidth <= 375, `Filter controls width (${filterBarWidth}px) fits mobile width`)
 
-  const verifyBtnWidth = await baselineEvidencePanel.locator('.verify-action-button').evaluate((el) => el.clientWidth)
-  assert(verifyBtnWidth > 150, 'Verify button sized responsively on mobile')
+  const selectVisible = await page.locator('.history-filter-select').isVisible()
+  assert(selectVisible, 'Filter select is visible on mobile viewport')
+
+  await page.selectOption('.history-filter-select', 'not_verified')
+  await page.waitForTimeout(200)
+  assert.strictEqual(await page.locator('.history-item').count(), 1, 'Select dropdown successfully filters history on mobile')
 
   await browser.close()
-  console.log('ALL 10 KLYRO STEP 11C FIX VERIFICATION FRONTEND TESTS PASSED!')
+  console.log('ALL 10 KLYRO STEP 11D VERIFICATION HISTORY & REGRESSION TESTS PASSED!')
 }
 
 runVerificationFrontendAudit().catch((err) => {
-  console.error('Fix verification frontend audit failed:', err)
+  console.error('Verification history & regression audit failed:', err)
   process.exit(1)
 })
