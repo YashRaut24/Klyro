@@ -21,6 +21,29 @@ function App() {
   const [verificationLoading, setVerificationLoading] = useState({})
   const [verificationError, setVerificationError] = useState({})
   const [filter, setFilter] = useState('all')
+  const [alertStatus, setAlertStatus] = useState(null)
+  const [isAlertStatusLoading, setIsAlertStatusLoading] = useState(true)
+  const [alertStatusError, setAlertStatusError] = useState(null)
+
+  const fetchAlertStatus = async () => {
+    setIsAlertStatusLoading(true)
+    setAlertStatusError(null)
+
+    try {
+      const response = await fetch('http://localhost:5000/api/regression-alerts/status')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to retrieve alert status.')
+      }
+
+      setAlertStatus(data)
+    } catch (err) {
+      setAlertStatusError(err.message || 'Failed to load alert status.')
+    } finally {
+      setIsAlertStatusLoading(false)
+    }
+  }
 
   const fetchHistory = async () => {
     setHistoryError(null)
@@ -43,6 +66,7 @@ function App() {
 
   useEffect(() => {
     fetchHistory()
+    fetchAlertStatus()
   }, [])
 
   const handleSubmit = async (e) => {
@@ -244,6 +268,22 @@ function App() {
       }))
     } finally {
       setVerificationLoading((prev) => ({ ...prev, [id]: false }))
+      fetchAlertStatus()
+    }
+  }
+
+  const formatOutcomeStatus = (status) => {
+    switch (status) {
+      case 'delivered':
+        return 'Delivered'
+      case 'failed':
+        return 'Failed'
+      case 'timed_out':
+        return 'Timed Out'
+      case 'skipped':
+        return 'Skipped'
+      default:
+        return 'No attempts yet'
     }
   }
 
@@ -405,6 +445,60 @@ function App() {
             </div>
           </div>
         )}
+
+        <section className="alerts-status-section" aria-label="Regression Alerts Status">
+          <div className="alerts-status-header">
+            <div className="alerts-status-title-group">
+              <h2 className="alerts-status-title">Regression Alerts</h2>
+              <span className={`config-badge ${alertStatus?.configured ? 'config-badge-on' : 'config-badge-off'}`}>
+                {alertStatus?.configured ? 'Configured' : 'Not configured'}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="alerts-refresh-btn"
+              onClick={fetchAlertStatus}
+              disabled={isAlertStatusLoading}
+              aria-label="Refresh alert status"
+            >
+              {isAlertStatusLoading ? 'Refreshing...' : 'Refresh Status'}
+            </button>
+          </div>
+
+          {isAlertStatusLoading && !alertStatus && (
+            <div className="alerts-status-body alerts-status-loading" role="status">
+              <div className="spinner small-spinner"></div>
+              <span>Checking alert status...</span>
+            </div>
+          )}
+
+          {alertStatusError && !isAlertStatusLoading && (
+            <div className="alerts-status-body alerts-status-error" role="alert">
+              <span className="alerts-error-text">{alertStatusError}</span>
+            </div>
+          )}
+
+          {!alertStatusError && alertStatus && (
+            <div className="alerts-status-card">
+              <div className="alerts-status-row">
+                <span className="alerts-label">Latest Delivery Outcome:</span>
+                <span className={`alerts-outcome-badge alerts-outcome-${alertStatus.status || 'unavailable'}`}>
+                  {formatOutcomeStatus(alertStatus.status)}
+                </span>
+              </div>
+              {alertStatus.timestamp && (
+                <div className="alerts-status-row">
+                  <span className="alerts-label">Attempted At:</span>
+                  <span className="alerts-timestamp">{formatTimestamp(alertStatus.timestamp)}</span>
+                </div>
+              )}
+              <div className="alerts-status-row alerts-message-row">
+                <span className="alerts-label">Details:</span>
+                <span className="alerts-message">{alertStatus.message || 'No delivery details available'}</span>
+              </div>
+            </div>
+          )}
+        </section>
 
         <section className="history-section" aria-label="Test Run History">
           <div className="history-header">

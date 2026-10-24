@@ -4,7 +4,10 @@ import {
   sendRegressionAlertWebhook,
   buildRegressionWebhookPayload,
   clearDispatchedWebhookEvents,
-  dispatchedWebhookEvents
+  dispatchedWebhookEvents,
+  getRegressionWebhookStatus,
+  recordDeliveryStatus,
+  clearRegressionWebhookStatus
 } from './src/regressionWebhook.js'
 import { TestRun } from './src/models/TestRun.js'
 
@@ -313,6 +316,97 @@ assert(persistedBaseline.verificationReport)
 assert.strictEqual(persistedBaseline.verificationReport.status, 'verified')
 assert.strictEqual(persistedBaseline.verificationReport.summary.resolved, 1)
 console.log('Passed Test 8: Live verification API executed cleanly and persisted report without regression.\n')
+
+console.log('Test 9: Configured webhook status without exposing the URL')
+clearRegressionWebhookStatus()
+process.env.REGRESSION_WEBHOOK_URL = 'https://secret.webhook.org/listener?key=supersecret999'
+const status9 = getRegressionWebhookStatus()
+assert.strictEqual(status9.configured, true)
+assert.strictEqual(JSON.stringify(status9).includes('supersecret999'), false)
+assert.strictEqual(JSON.stringify(status9).includes('secret.webhook.org'), false)
+console.log('Passed Test 9: Webhook configuration status verified without leaking secret URL.\n')
+
+console.log('Test 10: Missing webhook configuration')
+delete process.env.REGRESSION_WEBHOOK_URL
+const status10 = getRegressionWebhookStatus()
+assert.strictEqual(status10.configured, false)
+console.log('Passed Test 10: Missing configuration safely reported as configured=false.\n')
+
+console.log('Test 11: No previous delivery history')
+clearRegressionWebhookStatus()
+const status11 = getRegressionWebhookStatus()
+assert.strictEqual(status11.status, 'unavailable')
+assert.strictEqual(status11.timestamp, null)
+assert.strictEqual(status11.latestDelivery, null)
+assert.strictEqual(status11.message, 'No webhook deliveries attempted yet')
+console.log('Passed Test 11: Clean unavailable state returned when no prior delivery history.\n')
+
+console.log('Test 12: Actual delivery outcomes recorded correctly across all states')
+clearDispatchedWebhookEvents()
+clearRegressionWebhookStatus()
+
+await sendRegressionAlertWebhook({
+  verificationReport: regressionReport1,
+  baselineRunId: 'b-stat-1',
+  verificationRunId: 'v-stat-1',
+  webhookUrl: 'https://example.com/webhook',
+  fetchFn: async () => ({ ok: true, status: 200 })
+})
+let s12 = getRegressionWebhookStatus()
+assert.strictEqual(s12.status, 'delivered')
+assert(s12.message.includes('200'))
+assert(s12.timestamp)
+
+clearDispatchedWebhookEvents()
+await sendRegressionAlertWebhook({
+  verificationReport: regressionReport1,
+  baselineRunId: 'b-stat-2',
+  verificationRunId: 'v-stat-2',
+  webhookUrl: 'https://example.com/webhook',
+  fetchFn: async () => ({ ok: false, status: 502 })
+})
+s12 = getRegressionWebhookStatus()
+assert.strictEqual(s12.status, 'failed')
+assert(s12.message.includes('502'))
+
+clearDispatchedWebhookEvents()
+await sendRegressionAlertWebhook({
+  verificationReport: regressionReport1,
+  baselineRunId: 'b-stat-3',
+  verificationRunId: 'v-stat-3',
+  webhookUrl: 'https://example.com/webhook',
+  fetchFn: async () => {
+    const err = new Error('aborted')
+    err.name = 'AbortError'
+    throw err
+  }
+})
+s12 = getRegressionWebhookStatus()
+assert.strictEqual(s12.status, 'timed_out')
+assert.strictEqual(s12.message, 'Webhook request timed out')
+
+clearDispatchedWebhookEvents()
+await sendRegressionAlertWebhook({
+  verificationReport: cleanReport2,
+  baselineRunId: 'b-stat-4',
+  verificationRunId: 'v-stat-4',
+  webhookUrl: 'https://example.com/webhook',
+  fetchFn: async () => ({ ok: true, status: 200 })
+})
+s12 = getRegressionWebhookStatus()
+assert.strictEqual(s12.status, 'skipped')
+assert(s12.message.includes('No regression detected') || s12.message.includes('No regression alert required'))
+console.log('Passed Test 12: All actual delivery outcomes recorded and reported accurately.\n')
+
+console.log('Test 13: GET /api/regression-alerts/status API endpoint integration')
+const statusApiRes = await fetch('http://localhost:5000/api/regression-alerts/status')
+assert.strictEqual(statusApiRes.status, 200)
+const statusApiData = await statusApiRes.json()
+assert.strictEqual(typeof statusApiData.configured, 'boolean')
+assert(typeof statusApiData.status === 'string')
+assert(typeof statusApiData.message === 'string')
+assert.strictEqual(JSON.stringify(statusApiData).includes('supersecret'), false)
+console.log('Passed Test 13: GET /api/regression-alerts/status returned valid payload without secret leakage.\n')
 
 console.log('ALL REGRESSION ALERT WEBHOOK DELIVERY TESTS PASSED!')
 process.exit(0)

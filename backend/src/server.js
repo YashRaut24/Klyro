@@ -7,7 +7,7 @@ import { TestRun } from './models/TestRun.js'
 import { analyzeFailures } from './failureAnalyzer.js'
 import { analyzeWithGroq } from './aiProvider.js'
 import { compareTestRuns } from './fixVerification.js'
-import { sendRegressionAlertWebhook } from './regressionWebhook.js'
+import { sendRegressionAlertWebhook, getRegressionWebhookStatus } from './regressionWebhook.js'
 
 dotenv.config()
 
@@ -277,6 +277,17 @@ const handleVerifyRun = async (req, res) => {
 }
 
 app.post('/api/browser/runs/:id/verify', handleVerifyRun)
+
+app.get('/api/regression-alerts/status', (req, res) => {
+  try {
+    const statusData = getRegressionWebhookStatus()
+    return res.json(statusData)
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to retrieve regression alert status'
+    })
+  }
+})
 
 const startServer = async () => {
   try {

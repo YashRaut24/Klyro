@@ -1,9 +1,44 @@
 import { evaluateRegressionAlert } from './regressionAlert.js'
 
 export const dispatchedWebhookEvents = new Set()
+let latestDeliveryStatus = null
 
 export const clearDispatchedWebhookEvents = () => {
   dispatchedWebhookEvents.clear()
+}
+
+export const clearRegressionWebhookStatus = () => {
+  latestDeliveryStatus = null
+}
+
+export const recordDeliveryStatus = (outcome) => {
+  if (!outcome || typeof outcome !== 'object') {
+    return null
+  }
+  latestDeliveryStatus = {
+    status: outcome.status || 'unavailable',
+    message: outcome.message || '',
+    timestamp: outcome.timestamp || new Date().toISOString()
+  }
+  return latestDeliveryStatus
+}
+
+export const getRegressionWebhookStatus = () => {
+  const configured = Boolean(
+    process.env.REGRESSION_WEBHOOK_URL &&
+    typeof process.env.REGRESSION_WEBHOOK_URL === 'string' &&
+    process.env.REGRESSION_WEBHOOK_URL.trim().length > 0
+  )
+
+  const latest = latestDeliveryStatus ? { ...latestDeliveryStatus } : null
+
+  return {
+    configured,
+    status: latest ? latest.status : 'unavailable',
+    timestamp: latest ? latest.timestamp : null,
+    message: latest ? latest.message : 'No webhook deliveries attempted yet',
+    latestDelivery: latest
+  }
 }
 
 export const buildRegressionWebhookPayload = ({
@@ -79,18 +114,28 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
 
   const alertResult = evaluateRegressionAlert(report)
   if (!alertResult.alertRequired || alertResult.newFindingsCount <= 0) {
+    const outcome = {
+      status: 'skipped',
+      message: alertResult.reason || 'No regression alert required'
+    }
+    recordDeliveryStatus(outcome)
     return {
       delivered: false,
       skipped: true,
-      reason: alertResult.reason || 'No regression alert required'
+      reason: outcome.message
     }
   }
 
   if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.trim()) {
+    const outcome = {
+      status: 'skipped',
+      message: 'Webhook URL not configured'
+    }
+    recordDeliveryStatus(outcome)
     return {
       delivered: false,
       skipped: true,
-      reason: 'Webhook URL not configured'
+      reason: outcome.message
     }
   }
 
@@ -141,13 +186,23 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
     })
 
     if (!response.ok) {
+      const outcome = {
+        status: 'failed',
+        message: `Webhook delivery failed with HTTP ${response.status}`
+      }
+      recordDeliveryStatus(outcome)
       return {
         delivered: false,
         status: response.status,
-        reason: `Webhook responded with status ${response.status}`
+        reason: outcome.message
       }
     }
 
+    const outcome = {
+      status: 'delivered',
+      message: `Webhook delivered successfully (HTTP ${response.status})`
+    }
+    recordDeliveryStatus(outcome)
     return {
       delivered: true,
       status: response.status,
@@ -155,9 +210,14 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
     }
   } catch (err) {
     const isTimeout = err?.name === 'AbortError' || err?.code === 'ABORT_ERR'
+    const outcome = {
+      status: isTimeout ? 'timed_out' : 'failed',
+      message: isTimeout ? 'Webhook request timed out' : 'Webhook network request failed'
+    }
+    recordDeliveryStatus(outcome)
     return {
       delivered: false,
-      reason: isTimeout ? 'Webhook request timed out' : 'Webhook request failed'
+      reason: outcome.message
     }
   } finally {
     clearTimeout(timer)

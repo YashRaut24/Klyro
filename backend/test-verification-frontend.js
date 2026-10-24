@@ -269,6 +269,21 @@ const runVerificationFrontendAudit = async () => {
     }
   })
 
+  let mockAlertStatus = {
+    configured: true,
+    status: 'delivered',
+    timestamp: '2026-10-24T12:00:00.000Z',
+    message: 'Webhook delivered successfully (HTTP 200)'
+  }
+
+  await page.route('**/api/regression-alerts/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockAlertStatus)
+    })
+  })
+
   console.log('Test 1: Navigating to frontend...')
   await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
 
@@ -411,12 +426,59 @@ const runVerificationFrontendAudit = async () => {
   assert.strictEqual(await testPanel.locator('.verification-card').isVisible(), true, 'Verification card rendered')
   assert.strictEqual(await testPanel.locator('.findings-group').isVisible(), true, 'Findings group intact')
 
-  console.log('Test 10: Responsive layout at 375px width...')
+  console.log('Test 11: Regression Alerts section renders with configuration badge and delivery outcome...')
+  const alertsSection = page.locator('.alerts-status-section')
+  await alertsSection.waitFor({ state: 'visible' })
+  const configBadge = alertsSection.locator('.config-badge')
+  assert.strictEqual((await configBadge.textContent()).trim(), 'Configured')
+  assert(await configBadge.evaluate((el) => el.classList.contains('config-badge-on')))
+
+  const outcomeBadge = alertsSection.locator('.alerts-outcome-badge')
+  assert.strictEqual((await outcomeBadge.textContent()).trim(), 'Delivered')
+  assert(await outcomeBadge.evaluate((el) => el.classList.contains('alerts-outcome-delivered')))
+
+  const alertsDetails = alertsSection.locator('.alerts-message')
+  assert((await alertsDetails.textContent()).includes('HTTP 200'))
+
+  console.log('Test 12: Regression Alerts status dynamic refresh and state transitions...')
+  mockAlertStatus = {
+    configured: false,
+    status: 'unavailable',
+    timestamp: null,
+    message: 'No webhook deliveries attempted yet'
+  }
+
+  const refreshBtn = alertsSection.locator('.alerts-refresh-btn')
+  await refreshBtn.click()
+  await page.waitForTimeout(300)
+
+  assert.strictEqual((await configBadge.textContent()).trim(), 'Not configured')
+  assert(await configBadge.evaluate((el) => el.classList.contains('config-badge-off')))
+  assert.strictEqual((await outcomeBadge.textContent()).trim(), 'No attempts yet')
+  assert((await alertsDetails.textContent()).includes('No webhook deliveries attempted yet'))
+
+  mockAlertStatus = {
+    configured: true,
+    status: 'failed',
+    timestamp: '2026-10-24T12:30:00.000Z',
+    message: 'Webhook delivery failed with HTTP 500'
+  }
+  await refreshBtn.click()
+  await page.waitForTimeout(300)
+
+  assert.strictEqual((await outcomeBadge.textContent()).trim(), 'Failed')
+  assert(await outcomeBadge.evaluate((el) => el.classList.contains('alerts-outcome-failed')))
+  assert((await alertsDetails.textContent()).includes('HTTP 500'))
+
+  console.log('Test 13: Responsive layout at 375px width including alerts section...')
   await page.setViewportSize({ width: 375, height: 667 })
   await page.waitForTimeout(300)
 
   const mobileItemWidth = await testBaseline.evaluate((el) => el.clientWidth)
   assert(mobileItemWidth > 200 && mobileItemWidth <= 375, `Mobile item width (${mobileItemWidth}px) fits 375px viewport`)
+
+  const alertsSectionWidth = await page.locator('.alerts-status-section').evaluate((el) => el.clientWidth)
+  assert(alertsSectionWidth > 200 && alertsSectionWidth <= 375, `Alerts section width (${alertsSectionWidth}px) fits mobile width`)
 
   const filterBarWidth = await page.locator('.history-filter-controls').evaluate((el) => el.clientWidth)
   assert(filterBarWidth > 200 && filterBarWidth <= 375, `Filter controls width (${filterBarWidth}px) fits mobile width`)
@@ -429,7 +491,7 @@ const runVerificationFrontendAudit = async () => {
   assert.strictEqual(await page.locator('.history-item').count(), 1, 'Select dropdown successfully filters history on mobile')
 
   await browser.close()
-  console.log('ALL 10 KLYRO STEP 11D VERIFICATION HISTORY & REGRESSION TESTS PASSED!')
+  console.log('ALL KLYRO STEP 12C REGRESSION ALERTS & VERIFICATION FRONTEND TESTS PASSED!')
 }
 
 runVerificationFrontendAudit().catch((err) => {
