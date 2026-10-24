@@ -284,6 +284,43 @@ const runVerificationFrontendAudit = async () => {
     })
   })
 
+  let mockAlertHistory = [
+    {
+      id: 'hist-1',
+      eventType: 'regression_alert',
+      status: 'delivered',
+      timestamp: '2026-10-24T12:00:00.000Z',
+      message: 'Webhook delivered successfully (HTTP 200)',
+      baselineRunId: '6adcd36f3ed46bedfa87899e',
+      verificationRunId: '6adcd3712e6b22a5f3bffa44',
+      httpStatus: 200
+    }
+  ]
+
+  await page.route('**/api/regression-alerts/history*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ history: mockAlertHistory, total: mockAlertHistory.length })
+    })
+  })
+
+  let mockTestPingResponse = {
+    success: true,
+    delivered: true,
+    status: 'delivered',
+    httpStatus: 200,
+    message: 'Manual test ping delivered successfully (HTTP 200)'
+  }
+
+  await page.route('**/api/regression-alerts/test', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockTestPingResponse)
+    })
+  })
+
   console.log('Test 1: Navigating to frontend...')
   await page.goto('http://localhost:5173', { waitUntil: 'networkidle' })
 
@@ -433,7 +470,7 @@ const runVerificationFrontendAudit = async () => {
   assert.strictEqual((await configBadge.textContent()).trim(), 'Configured')
   assert(await configBadge.evaluate((el) => el.classList.contains('config-badge-on')))
 
-  const outcomeBadge = alertsSection.locator('.alerts-outcome-badge')
+  const outcomeBadge = alertsSection.locator('.alerts-status-card .alerts-outcome-badge')
   assert.strictEqual((await outcomeBadge.textContent()).trim(), 'Delivered')
   assert(await outcomeBadge.evaluate((el) => el.classList.contains('alerts-outcome-delivered')))
 
@@ -488,10 +525,65 @@ const runVerificationFrontendAudit = async () => {
 
   await page.selectOption('.history-filter-select', 'not_verified')
   await page.waitForTimeout(200)
-  assert.strictEqual(await page.locator('.history-item').count(), 1, 'Select dropdown successfully filters history on mobile')
+  console.log('Test 14: Manual webhook test button, loading state, and feedback banner...')
+  const testBtn = alertsSection.locator('.alerts-test-btn')
+  assert.strictEqual(await testBtn.isVisible(), true, 'Test Webhook button is visible')
+  await testBtn.click()
+  const feedbackBanner = alertsSection.locator('.alerts-feedback')
+  await feedbackBanner.waitFor({ state: 'visible', timeout: 5000 })
+  assert((await feedbackBanner.textContent()).includes('delivered successfully'), 'Feedback confirms successful ping')
+  assert(await feedbackBanner.evaluate((el) => el.classList.contains('alerts-feedback-success')), 'Has success feedback class')
+
+  const dismissBtn = feedbackBanner.locator('.alerts-feedback-close')
+  await dismissBtn.click()
+  await page.waitForTimeout(200)
+  assert.strictEqual(await alertsSection.locator('.alerts-feedback').count(), 0, 'Feedback banner dismissed on close')
+
+  console.log('Test 15: Delivery history rendering, tags, and empty state...')
+  const historyContainer = alertsSection.locator('.alerts-history-container')
+  assert.strictEqual(await historyContainer.isVisible(), true, 'History container rendered')
+  const historyItems = historyContainer.locator('.alerts-history-item')
+  assert.strictEqual(await historyItems.count(), 1, 'Initial history item rendered')
+  const eventTag = historyItems.first().locator('.alerts-event-tag')
+  assert.strictEqual((await eventTag.textContent()).trim(), 'Regression Alert', 'Event tag is Regression Alert')
+  const httpTag = historyItems.first().locator('.alerts-http-status')
+  assert.strictEqual((await httpTag.textContent()).trim(), 'HTTP 200', 'HTTP 200 status rendered')
+
+  mockAlertHistory = []
+  const refreshHistoryBtn = historyContainer.locator('.alerts-history-refresh-btn')
+  await refreshHistoryBtn.click()
+  await page.waitForTimeout(300)
+  const emptyHistory = historyContainer.locator('.alerts-history-empty')
+  assert.strictEqual(await emptyHistory.isVisible(), true, 'Empty history container visible')
+  assert((await emptyHistory.textContent()).includes('No webhook delivery attempts recorded yet'), 'Empty history message rendered')
+
+  console.log('Test 16: History refresh after manual ping...')
+  mockAlertHistory = [
+    {
+      id: 'hist-2',
+      eventType: 'manual_test_ping',
+      status: 'delivered',
+      timestamp: '2026-10-24T12:45:00.000Z',
+      message: 'Manual test ping delivered successfully (HTTP 200)',
+      baselineRunId: null,
+      verificationRunId: null,
+      httpStatus: 200
+    }
+  ]
+  await testBtn.click()
+  await page.waitForTimeout(300)
+  assert.strictEqual(await historyContainer.locator('.alerts-history-item').count(), 1, 'History refreshed with manual ping item')
+  const manualTag = historyContainer.locator('.alerts-event-tag').first()
+  assert.strictEqual((await manualTag.textContent()).trim(), 'Test Ping', 'Event tag is Test Ping')
+
+  console.log('Test 17: Mobile responsive layout at 375px with alerts history...')
+  const testBtnWidth = await testBtn.evaluate((el) => el.clientWidth)
+  assert(testBtnWidth > 100 && testBtnWidth <= 375, `Test button width (${testBtnWidth}px) fits mobile width`)
+  const histContainerWidth = await historyContainer.evaluate((el) => el.clientWidth)
+  assert(histContainerWidth > 200 && histContainerWidth <= 375, `History container width (${histContainerWidth}px) fits mobile width`)
 
   await browser.close()
-  console.log('ALL KLYRO STEP 12C REGRESSION ALERTS & VERIFICATION FRONTEND TESTS PASSED!')
+  console.log('ALL KLYRO STEP 12D REGRESSION ALERTS & VERIFICATION FRONTEND TESTS PASSED!')
 }
 
 runVerificationFrontendAudit().catch((err) => {

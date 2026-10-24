@@ -24,6 +24,11 @@ function App() {
   const [alertStatus, setAlertStatus] = useState(null)
   const [isAlertStatusLoading, setIsAlertStatusLoading] = useState(true)
   const [alertStatusError, setAlertStatusError] = useState(null)
+  const [alertHistory, setAlertHistory] = useState([])
+  const [isAlertHistoryLoading, setIsAlertHistoryLoading] = useState(true)
+  const [alertHistoryError, setAlertHistoryError] = useState(null)
+  const [isTestPingLoading, setIsTestPingLoading] = useState(false)
+  const [testPingFeedback, setTestPingFeedback] = useState(null)
 
   const fetchAlertStatus = async () => {
     setIsAlertStatusLoading(true)
@@ -42,6 +47,67 @@ function App() {
       setAlertStatusError(err.message || 'Failed to load alert status.')
     } finally {
       setIsAlertStatusLoading(false)
+    }
+  }
+
+  const fetchAlertHistory = async () => {
+    setIsAlertHistoryLoading(true)
+    setAlertHistoryError(null)
+
+    try {
+      const response = await fetch('http://localhost:5000/api/regression-alerts/history')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to retrieve alert history.')
+      }
+
+      setAlertHistory(Array.isArray(data.history) ? data.history : [])
+    } catch (err) {
+      setAlertHistoryError(err.message || 'Failed to load delivery history.')
+    } finally {
+      setIsAlertHistoryLoading(false)
+    }
+  }
+
+  const handleTestWebhook = async () => {
+    if (isTestPingLoading) {
+      return
+    }
+
+    setIsTestPingLoading(true)
+    setTestPingFeedback(null)
+
+    try {
+      const response = await fetch('http://localhost:5000/api/regression-alerts/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setTestPingFeedback({
+          type: 'error',
+          message: data.message || data.error || 'Manual test ping failed.'
+        })
+      } else {
+        setTestPingFeedback({
+          type: 'success',
+          message: data.message || 'Manual test ping delivered successfully.'
+        })
+      }
+    } catch (err) {
+      setTestPingFeedback({
+        type: 'error',
+        message: err.message || 'An unexpected error occurred while sending test ping.'
+      })
+    } finally {
+      setIsTestPingLoading(false)
+      fetchAlertStatus()
+      fetchAlertHistory()
     }
   }
 
@@ -67,6 +133,7 @@ function App() {
   useEffect(() => {
     fetchHistory()
     fetchAlertStatus()
+    fetchAlertHistory()
   }, [])
 
   const handleSubmit = async (e) => {
@@ -269,6 +336,18 @@ function App() {
     } finally {
       setVerificationLoading((prev) => ({ ...prev, [id]: false }))
       fetchAlertStatus()
+      fetchAlertHistory()
+    }
+  }
+
+  const formatEventType = (eventType) => {
+    switch (eventType) {
+      case 'manual_test_ping':
+        return 'Test Ping'
+      case 'regression_alert':
+        return 'Regression Alert'
+      default:
+        return eventType || 'Alert'
     }
   }
 
@@ -454,16 +533,44 @@ function App() {
                 {alertStatus?.configured ? 'Configured' : 'Not configured'}
               </span>
             </div>
-            <button
-              type="button"
-              className="alerts-refresh-btn"
-              onClick={fetchAlertStatus}
-              disabled={isAlertStatusLoading}
-              aria-label="Refresh alert status"
-            >
-              {isAlertStatusLoading ? 'Refreshing...' : 'Refresh Status'}
-            </button>
+            <div className="alerts-header-actions">
+              <button
+                type="button"
+                className="alerts-test-btn"
+                onClick={handleTestWebhook}
+                disabled={isTestPingLoading}
+                aria-label="Test webhook endpoint"
+              >
+                {isTestPingLoading ? 'Sending Test...' : 'Test Webhook'}
+              </button>
+              <button
+                type="button"
+                className="alerts-refresh-btn"
+                onClick={() => {
+                  fetchAlertStatus()
+                  fetchAlertHistory()
+                }}
+                disabled={isAlertStatusLoading || isAlertHistoryLoading}
+                aria-label="Refresh alert status"
+              >
+                {isAlertStatusLoading || isAlertHistoryLoading ? 'Refreshing...' : 'Refresh Status'}
+              </button>
+            </div>
           </div>
+
+          {testPingFeedback && (
+            <div className={`alerts-feedback alerts-feedback-${testPingFeedback.type}`} role="status">
+              <span className="alerts-feedback-text">{testPingFeedback.message}</span>
+              <button
+                type="button"
+                className="alerts-feedback-close"
+                onClick={() => setTestPingFeedback(null)}
+                aria-label="Dismiss feedback"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {isAlertStatusLoading && !alertStatus && (
             <div className="alerts-status-body alerts-status-loading" role="status">
@@ -498,6 +605,87 @@ function App() {
               </div>
             </div>
           )}
+
+          <div className="alerts-history-container">
+            <div className="alerts-history-header">
+              <div className="alerts-history-title-group">
+                <h3 className="alerts-history-title">Recent Delivery History</h3>
+                {!isAlertHistoryLoading && !alertHistoryError && (
+                  <span className="alerts-history-count">
+                    {alertHistory.length} {alertHistory.length === 1 ? 'attempt' : 'attempts'}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="alerts-history-refresh-btn"
+                onClick={fetchAlertHistory}
+                disabled={isAlertHistoryLoading}
+                aria-label="Refresh delivery history"
+              >
+                {isAlertHistoryLoading ? 'Loading...' : 'Refresh History'}
+              </button>
+            </div>
+
+            {isAlertHistoryLoading && alertHistory.length === 0 && (
+              <div className="alerts-history-loading" role="status">
+                <div className="spinner small-spinner"></div>
+                <span>Loading delivery history...</span>
+              </div>
+            )}
+
+            {alertHistoryError && (
+              <div className="alerts-history-error" role="alert">
+                <span>{alertHistoryError}</span>
+              </div>
+            )}
+
+            {!isAlertHistoryLoading && !alertHistoryError && alertHistory.length === 0 && (
+              <div className="alerts-history-empty">
+                <p>No webhook delivery attempts recorded yet.</p>
+              </div>
+            )}
+
+            {alertHistory.length > 0 && (
+              <div className="alerts-history-list" role="list" aria-label="Webhook delivery attempts">
+                {alertHistory.map((item) => (
+                  <div key={item.id} className="alerts-history-item" role="listitem">
+                    <div className="alerts-history-item-top">
+                      <div className="alerts-history-item-tags">
+                        <span className={`alerts-event-tag alerts-event-${item.eventType}`}>
+                          {formatEventType(item.eventType)}
+                        </span>
+                        <span className={`alerts-outcome-badge alerts-outcome-${item.status}`}>
+                          {formatOutcomeStatus(item.status)}
+                        </span>
+                        {item.httpStatus && (
+                          <span className="alerts-http-status">HTTP {item.httpStatus}</span>
+                        )}
+                      </div>
+                      <span className="alerts-history-time">{formatTimestamp(item.timestamp)}</span>
+                    </div>
+                    <div className="alerts-history-item-body">
+                      <p className="alerts-history-msg">{item.message}</p>
+                      {(item.baselineRunId || item.verificationRunId) && (
+                        <div className="alerts-history-runs">
+                          {item.baselineRunId && (
+                            <span className="alerts-run-tag">
+                              Baseline: {item.baselineRunId.slice(0, 8)}...
+                            </span>
+                          )}
+                          {item.verificationRunId && (
+                            <span className="alerts-run-tag">
+                              Verification: {item.verificationRunId.slice(0, 8)}...
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="history-section" aria-label="Test Run History">

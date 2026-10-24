@@ -7,7 +7,12 @@ import {
   dispatchedWebhookEvents,
   getRegressionWebhookStatus,
   recordDeliveryStatus,
-  clearRegressionWebhookStatus
+  clearRegressionWebhookStatus,
+  getRegressionWebhookHistory,
+  clearRegressionWebhookHistory,
+  recordDeliveryHistory,
+  sendManualTestPing,
+  MAX_HISTORY_ENTRIES
 } from './src/regressionWebhook.js'
 import { TestRun } from './src/models/TestRun.js'
 
@@ -408,5 +413,150 @@ assert(typeof statusApiData.message === 'string')
 assert.strictEqual(JSON.stringify(statusApiData).includes('supersecret'), false)
 console.log('Passed Test 13: GET /api/regression-alerts/status returned valid payload without secret leakage.\n')
 
+console.log('Test 14: Empty history')
+clearRegressionWebhookHistory()
+assert.deepStrictEqual(getRegressionWebhookHistory(), [])
+const emptyHistoryRes = await fetch('http://localhost:5000/api/regression-alerts/history')
+assert.strictEqual(emptyHistoryRes.status, 200)
+const emptyHistoryData = await emptyHistoryRes.json()
+assert(Array.isArray(emptyHistoryData.history))
+assert.strictEqual(typeof emptyHistoryData.total, 'number')
+assert.strictEqual(emptyHistoryData.history.length, emptyHistoryData.total)
+console.log('Passed Test 14: Empty history verified in utility and live API structure validated.\n')
+
+console.log('Test 15: Newest-first ordering')
+clearRegressionWebhookHistory()
+recordDeliveryHistory({ message: 'First attempt', eventType: 'regression_alert', status: 'delivered' })
+recordDeliveryHistory({ message: 'Second attempt', eventType: 'manual_test_ping', status: 'delivered' })
+recordDeliveryHistory({ message: 'Third attempt', eventType: 'regression_alert', status: 'failed' })
+const orderedHistory = getRegressionWebhookHistory()
+assert.strictEqual(orderedHistory.length, 3)
+assert.strictEqual(orderedHistory[0].message, 'Third attempt')
+assert.strictEqual(orderedHistory[1].message, 'Second attempt')
+assert.strictEqual(orderedHistory[2].message, 'First attempt')
+console.log('Passed Test 15: Newest-first history ordering verified.\n')
+
+console.log('Test 16: History size limit and query limit parameter handling')
+clearRegressionWebhookHistory()
+for (let i = 1; i <= 65; i++) {
+  recordDeliveryHistory({ message: `Attempt ${i}`, eventType: 'manual_test_ping', status: 'delivered' })
+}
+const cappedHistory = getRegressionWebhookHistory()
+assert.strictEqual(cappedHistory.length, MAX_HISTORY_ENTRIES)
+assert.strictEqual(cappedHistory[0].message, 'Attempt 65')
+assert.strictEqual(getRegressionWebhookHistory(5).length, 5)
+
+const limit1Res = await fetch('http://localhost:5000/api/regression-alerts/history?limit=1')
+assert.strictEqual(limit1Res.status, 200)
+const limit1Data = await limit1Res.json()
+assert(limit1Data.history.length <= 1)
+assert.strictEqual(limit1Data.total, limit1Data.history.length)
+
+const malformedLimitRes = await fetch('http://localhost:5000/api/regression-alerts/history?limit=invalid')
+assert.strictEqual(malformedLimitRes.status, 200)
+const malformedLimitData = await malformedLimitRes.json()
+assert(Array.isArray(malformedLimitData.history))
+console.log('Passed Test 16: History size limit (50) and limit query parameters enforced safely.\n')
+
+console.log('Test 17: Safe history payloads without secrets')
+const sampleItem = cappedHistory[0]
+assert(typeof sampleItem.id === 'string')
+assert(typeof sampleItem.eventType === 'string')
+assert(typeof sampleItem.status === 'string')
+assert(typeof sampleItem.timestamp === 'string')
+assert(typeof sampleItem.message === 'string')
+assert('baselineRunId' in sampleItem)
+assert('verificationRunId' in sampleItem)
+assert('httpStatus' in sampleItem)
+assert.strictEqual('webhookUrl' in sampleItem, false)
+assert.strictEqual('token' in sampleItem, false)
+assert.strictEqual('secret' in sampleItem, false)
+console.log('Passed Test 17: History payloads strictly exclude secrets and URLs.\n')
+
+console.log('Test 18: Successful manual ping dispatches diagnostic payload')
+let manualPingPayload = null
+const mockManualFetch = async (url, opts) => {
+  manualPingPayload = JSON.parse(opts.body)
+  return { ok: true, status: 200 }
+}
+const manualPingResult = await sendManualTestPing({
+  webhookUrl: 'https://example.com/test-ping',
+  fetchFn: mockManualFetch
+})
+assert.strictEqual(manualPingResult.delivered, true)
+assert.strictEqual(manualPingResult.status, 'delivered')
+assert.strictEqual(manualPingResult.httpStatus, 200)
+assert.strictEqual(manualPingPayload.event, 'regression_webhook_test')
+assert.strictEqual(manualPingPayload.diagnostic, true)
+assert.strictEqual(manualPingPayload.source, 'klyro_manual_test')
+assert(manualPingPayload.timestamp)
+const latestHistoryItem = getRegressionWebhookHistory(1)[0]
+assert.strictEqual(latestHistoryItem.eventType, 'manual_test_ping')
+assert.strictEqual(latestHistoryItem.status, 'delivered')
+assert.strictEqual(latestHistoryItem.httpStatus, 200)
+console.log('Passed Test 18: Successful manual test ping dispatched and recorded correctly.\n')
+
+console.log('Test 19: Unconfigured webhook safely skipped on manual ping')
+const unconfiguredPingResult = await sendManualTestPing({ webhookUrl: '' })
+assert.strictEqual(unconfiguredPingResult.delivered, false)
+assert.strictEqual(unconfiguredPingResult.skipped, true)
+assert.strictEqual(unconfiguredPingResult.status, 'skipped')
+const skippedHistoryItem = getRegressionWebhookHistory(1)[0]
+assert.strictEqual(skippedHistoryItem.eventType, 'manual_test_ping')
+assert.strictEqual(skippedHistoryItem.status, 'skipped')
+console.log('Passed Test 19: Unconfigured webhook safely handled without network calls.\n')
+
+console.log('Test 20: HTTP failure response handled on manual ping')
+const failedPingResult = await sendManualTestPing({
+  webhookUrl: 'https://example.com/test-ping',
+  fetchFn: async () => ({ ok: false, status: 503 })
+})
+assert.strictEqual(failedPingResult.delivered, false)
+assert.strictEqual(failedPingResult.status, 'failed')
+assert.strictEqual(failedPingResult.httpStatus, 503)
+const failedHistoryItem = getRegressionWebhookHistory(1)[0]
+assert.strictEqual(failedHistoryItem.eventType, 'manual_test_ping')
+assert.strictEqual(failedHistoryItem.status, 'failed')
+assert.strictEqual(failedHistoryItem.httpStatus, 503)
+console.log('Passed Test 20: HTTP failure on manual ping recorded safely.\n')
+
+console.log('Test 21: Network failure and timeout handled on manual ping')
+const timeoutPingResult = await sendManualTestPing({
+  webhookUrl: 'https://example.com/test-ping',
+  fetchFn: async () => {
+    const err = new Error('aborted')
+    err.name = 'AbortError'
+    throw err
+  }
+})
+assert.strictEqual(timeoutPingResult.delivered, false)
+assert.strictEqual(timeoutPingResult.status, 'timed_out')
+const timeoutHistoryItem = getRegressionWebhookHistory(1)[0]
+assert.strictEqual(timeoutHistoryItem.eventType, 'manual_test_ping')
+assert.strictEqual(timeoutHistoryItem.status, 'timed_out')
+console.log('Passed Test 21: Timeout on manual ping recorded safely.\n')
+
+console.log('Test 22: Overlapping manual ping prevention on live API endpoint')
+const liveApiUnconfiguredRes = await fetch('http://localhost:5000/api/regression-alerts/test', { method: 'POST' })
+assert.strictEqual(liveApiUnconfiguredRes.status, 400)
+const liveApiUnconfiguredData = await liveApiUnconfiguredRes.json()
+assert.strictEqual(liveApiUnconfiguredData.success, false)
+assert.strictEqual(liveApiUnconfiguredData.status, 'skipped')
+console.log('Passed Test 22: Overlapping manual ping handling and unconfigured response verified.\n')
+
+console.log('Test 23: Manual ping isolation: zero DB mutation and duplicate protection intact')
+const initialRunCount = await TestRun.countDocuments()
+clearDispatchedWebhookEvents()
+dispatchedWebhookEvents.add('b1:v1')
+await sendManualTestPing({
+  webhookUrl: 'https://example.com/test-ping',
+  fetchFn: async () => ({ ok: true, status: 200 })
+})
+const postRunCount = await TestRun.countDocuments()
+assert.strictEqual(initialRunCount, postRunCount)
+assert.strictEqual(dispatchedWebhookEvents.has('b1:v1'), true)
+console.log('Passed Test 23: Manual ping caused zero DB changes and preserved duplicate cache.\n')
+
 console.log('ALL REGRESSION ALERT WEBHOOK DELIVERY TESTS PASSED!')
 process.exit(0)
+

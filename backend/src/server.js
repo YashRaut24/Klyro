@@ -7,7 +7,13 @@ import { TestRun } from './models/TestRun.js'
 import { analyzeFailures } from './failureAnalyzer.js'
 import { analyzeWithGroq } from './aiProvider.js'
 import { compareTestRuns } from './fixVerification.js'
-import { sendRegressionAlertWebhook, getRegressionWebhookStatus } from './regressionWebhook.js'
+import {
+  sendRegressionAlertWebhook,
+  getRegressionWebhookStatus,
+  getRegressionWebhookHistory,
+  sendManualTestPing,
+  recordDeliveryHistory
+} from './regressionWebhook.js'
 
 dotenv.config()
 
@@ -289,6 +295,92 @@ app.get('/api/regression-alerts/status', (req, res) => {
   }
 })
 
+let isManualTestInProgress = false
+
+app.get('/api/regression-alerts/history', (req, res) => {
+  try {
+    let limit = 50
+    if (req.query.limit !== undefined) {
+      const parsed = parseInt(req.query.limit, 10)
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        limit = Math.min(parsed, 50)
+      }
+    }
+    const history = getRegressionWebhookHistory(limit)
+    return res.json({
+      history,
+      total: history.length
+    })
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to retrieve regression alert history'
+    })
+  }
+})
+
+app.post('/api/regression-alerts/test', async (req, res) => {
+  if (isManualTestInProgress) {
+    return res.status(409).json({
+      error: 'A manual webhook test is already in progress',
+      code: 'TEST_IN_PROGRESS'
+    })
+  }
+
+  const configured = Boolean(
+    process.env.REGRESSION_WEBHOOK_URL &&
+    typeof process.env.REGRESSION_WEBHOOK_URL === 'string' &&
+    process.env.REGRESSION_WEBHOOK_URL.trim().length > 0
+  )
+
+  if (!configured) {
+    const outcome = {
+      eventType: 'manual_test_ping',
+      status: 'skipped',
+      message: 'Webhook URL not configured',
+      timestamp: new Date().toISOString()
+    }
+    recordDeliveryHistory(outcome)
+    return res.status(400).json({
+      success: false,
+      delivered: false,
+      status: 'skipped',
+      error: 'Webhook URL not configured',
+      message: 'Webhook URL not configured'
+    })
+  }
+
+  isManualTestInProgress = true
+  try {
+    const result = await sendManualTestPing()
+    if (result.delivered) {
+      return res.json({
+        success: true,
+        delivered: true,
+        status: result.status,
+        httpStatus: result.httpStatus,
+        message: result.message
+      })
+    } else {
+      return res.status(502).json({
+        success: false,
+        delivered: false,
+        status: result.status,
+        httpStatus: result.httpStatus || null,
+        error: result.message || 'Webhook test delivery failed',
+        message: result.message || 'Webhook test delivery failed'
+      })
+    }
+  } catch {
+    return res.status(500).json({
+      success: false,
+      delivered: false,
+      error: 'Failed to execute manual webhook test'
+    })
+  } finally {
+    isManualTestInProgress = false
+  }
+})
+
 const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI)
@@ -306,5 +398,5 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('src/server.
   startServer()
 }
 
-export { app, handleVerifyRun, inFlightVerifications, startServer }
+export { app, handleVerifyRun, inFlightVerifications, isManualTestInProgress, startServer }
 

@@ -1,26 +1,65 @@
 import { evaluateRegressionAlert } from './regressionAlert.js'
 
 export const dispatchedWebhookEvents = new Set()
+export const MAX_HISTORY_ENTRIES = 50
+export const webhookDeliveryHistory = []
 let latestDeliveryStatus = null
 
 export const clearDispatchedWebhookEvents = () => {
   dispatchedWebhookEvents.clear()
 }
 
+export const clearRegressionWebhookHistory = () => {
+  webhookDeliveryHistory.length = 0
+}
+
 export const clearRegressionWebhookStatus = () => {
   latestDeliveryStatus = null
+  clearRegressionWebhookHistory()
+}
+
+export const recordDeliveryHistory = (entry) => {
+  if (!entry || typeof entry !== 'object') {
+    return null
+  }
+  const historyItem = {
+    id: entry.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+    eventType: entry.eventType || 'regression_alert',
+    status: entry.status || 'unavailable',
+    timestamp: entry.timestamp || new Date().toISOString(),
+    message: entry.message || '',
+    baselineRunId: entry.baselineRunId || null,
+    verificationRunId: entry.verificationRunId || null,
+    httpStatus: typeof entry.httpStatus === 'number' ? entry.httpStatus : null
+  }
+  webhookDeliveryHistory.unshift(historyItem)
+  if (webhookDeliveryHistory.length > MAX_HISTORY_ENTRIES) {
+    webhookDeliveryHistory.length = MAX_HISTORY_ENTRIES
+  }
+  latestDeliveryStatus = {
+    status: historyItem.status,
+    message: historyItem.message,
+    timestamp: historyItem.timestamp
+  }
+  return historyItem
 }
 
 export const recordDeliveryStatus = (outcome) => {
   if (!outcome || typeof outcome !== 'object') {
     return null
   }
-  latestDeliveryStatus = {
-    status: outcome.status || 'unavailable',
-    message: outcome.message || '',
-    timestamp: outcome.timestamp || new Date().toISOString()
+  return recordDeliveryHistory(outcome)
+}
+
+export const getRegressionWebhookHistory = (limit = 50) => {
+  let safeLimit = 50
+  if (limit !== undefined && limit !== null) {
+    const parsed = parseInt(limit, 10)
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      safeLimit = Math.min(parsed, MAX_HISTORY_ENTRIES)
+    }
   }
-  return latestDeliveryStatus
+  return webhookDeliveryHistory.slice(0, safeLimit)
 }
 
 export const getRegressionWebhookStatus = () => {
@@ -56,6 +95,95 @@ export const buildRegressionWebhookPayload = ({
     url: url || null,
     newFindingsCount: alertResult?.newFindingsCount || 0,
     newFindings: alertResult?.newFindings || []
+  }
+}
+
+export const sendManualTestPing = async ({ webhookUrl, fetchFn = globalThis.fetch, timeoutMs = 5000 } = {}) => {
+  const effectiveUrl = webhookUrl !== undefined ? webhookUrl : (process.env.REGRESSION_WEBHOOK_URL || null)
+
+  if (!effectiveUrl || typeof effectiveUrl !== 'string' || !effectiveUrl.trim()) {
+    const outcome = {
+      eventType: 'manual_test_ping',
+      status: 'skipped',
+      message: 'Webhook URL not configured',
+      httpStatus: null
+    }
+    recordDeliveryHistory(outcome)
+    return {
+      delivered: false,
+      skipped: true,
+      status: 'skipped',
+      message: outcome.message,
+      httpStatus: null
+    }
+  }
+
+  const payload = {
+    event: 'regression_webhook_test',
+    timestamp: new Date().toISOString(),
+    diagnostic: true,
+    source: 'klyro_manual_test'
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetchFn(effectiveUrl.trim(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    })
+
+    if (!response.ok) {
+      const outcome = {
+        eventType: 'manual_test_ping',
+        status: 'failed',
+        message: `Manual test ping failed with HTTP ${response.status}`,
+        httpStatus: response.status
+      }
+      recordDeliveryHistory(outcome)
+      return {
+        delivered: false,
+        status: 'failed',
+        httpStatus: response.status,
+        message: outcome.message
+      }
+    }
+
+    const outcome = {
+      eventType: 'manual_test_ping',
+      status: 'delivered',
+      message: `Manual test ping delivered successfully (HTTP ${response.status})`,
+      httpStatus: response.status
+    }
+    recordDeliveryHistory(outcome)
+    return {
+      delivered: true,
+      status: 'delivered',
+      httpStatus: response.status,
+      message: outcome.message
+    }
+  } catch (err) {
+    const isTimeout = err?.name === 'AbortError' || err?.code === 'ABORT_ERR'
+    const outcome = {
+      eventType: 'manual_test_ping',
+      status: isTimeout ? 'timed_out' : 'failed',
+      message: isTimeout ? 'Manual test ping timed out' : 'Manual test ping network request failed',
+      httpStatus: null
+    }
+    recordDeliveryHistory(outcome)
+    return {
+      delivered: false,
+      status: outcome.status,
+      httpStatus: null,
+      message: outcome.message
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -112,13 +240,21 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
     }
   }
 
+  const effectiveBaselineId = baselineRunId || report?.baselineRunId || null
+  const effectiveVerificationId = verificationRunId || report?.verificationRunId || null
+  const effectiveUrl = url || report?.url || null
+
   const alertResult = evaluateRegressionAlert(report)
   if (!alertResult.alertRequired || alertResult.newFindingsCount <= 0) {
     const outcome = {
+      eventType: 'regression_alert',
       status: 'skipped',
-      message: alertResult.reason || 'No regression alert required'
+      message: alertResult.reason || 'No regression alert required',
+      baselineRunId: effectiveBaselineId,
+      verificationRunId: effectiveVerificationId,
+      httpStatus: null
     }
-    recordDeliveryStatus(outcome)
+    recordDeliveryHistory(outcome)
     return {
       delivered: false,
       skipped: true,
@@ -128,20 +264,20 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
 
   if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.trim()) {
     const outcome = {
+      eventType: 'regression_alert',
       status: 'skipped',
-      message: 'Webhook URL not configured'
+      message: 'Webhook URL not configured',
+      baselineRunId: effectiveBaselineId,
+      verificationRunId: effectiveVerificationId,
+      httpStatus: null
     }
-    recordDeliveryStatus(outcome)
+    recordDeliveryHistory(outcome)
     return {
       delivered: false,
       skipped: true,
       reason: outcome.message
     }
   }
-
-  const effectiveBaselineId = baselineRunId || report?.baselineRunId || null
-  const effectiveVerificationId = verificationRunId || report?.verificationRunId || null
-  const effectiveUrl = url || report?.url || null
 
   const dispatchKey = effectiveBaselineId && effectiveVerificationId
     ? `${effectiveBaselineId}:${effectiveVerificationId}`
@@ -187,10 +323,14 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
 
     if (!response.ok) {
       const outcome = {
+        eventType: 'regression_alert',
         status: 'failed',
-        message: `Webhook delivery failed with HTTP ${response.status}`
+        message: `Webhook delivery failed with HTTP ${response.status}`,
+        baselineRunId: effectiveBaselineId,
+        verificationRunId: effectiveVerificationId,
+        httpStatus: response.status
       }
-      recordDeliveryStatus(outcome)
+      recordDeliveryHistory(outcome)
       return {
         delivered: false,
         status: response.status,
@@ -199,10 +339,14 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
     }
 
     const outcome = {
+      eventType: 'regression_alert',
       status: 'delivered',
-      message: `Webhook delivered successfully (HTTP ${response.status})`
+      message: `Webhook delivered successfully (HTTP ${response.status})`,
+      baselineRunId: effectiveBaselineId,
+      verificationRunId: effectiveVerificationId,
+      httpStatus: response.status
     }
-    recordDeliveryStatus(outcome)
+    recordDeliveryHistory(outcome)
     return {
       delivered: true,
       status: response.status,
@@ -211,10 +355,14 @@ export const sendRegressionAlertWebhook = async (reportOrOptions = {}, maybeCont
   } catch (err) {
     const isTimeout = err?.name === 'AbortError' || err?.code === 'ABORT_ERR'
     const outcome = {
+      eventType: 'regression_alert',
       status: isTimeout ? 'timed_out' : 'failed',
-      message: isTimeout ? 'Webhook request timed out' : 'Webhook network request failed'
+      message: isTimeout ? 'Webhook request timed out' : 'Webhook network request failed',
+      baselineRunId: effectiveBaselineId,
+      verificationRunId: effectiveVerificationId,
+      httpStatus: null
     }
-    recordDeliveryStatus(outcome)
+    recordDeliveryHistory(outcome)
     return {
       delivered: false,
       reason: outcome.message
