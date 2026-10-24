@@ -7,6 +7,7 @@ import { TestRun } from './models/TestRun.js'
 import { analyzeFailures } from './failureAnalyzer.js'
 import { analyzeWithGroq } from './aiProvider.js'
 import { compareTestRuns } from './fixVerification.js'
+import { sendRegressionAlertWebhook } from './regressionWebhook.js'
 
 dotenv.config()
 
@@ -248,6 +249,16 @@ const handleVerifyRun = async (req, res) => {
       return res.status(500).json({
         error: 'Failed to persist verification report'
       })
+    }
+
+    try {
+      await sendRegressionAlertWebhook({
+        baselineRun,
+        verificationRun: freshTestRun,
+        verificationReport,
+        url: baselineRun.url
+      })
+    } catch {
     }
 
     return res.json({
