@@ -14,6 +14,11 @@ import {
   sendManualTestPing,
   recordDeliveryHistory
 } from './regressionWebhook.js'
+import {
+  registerSchedule,
+  stopAllSchedules,
+  getScheduledJobs
+} from './scheduledTestRunner.js'
 
 dotenv.config()
 
@@ -398,5 +403,14 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('src/server.
   startServer()
 }
 
-export { app, handleVerifyRun, inFlightVerifications, isManualTestInProgress, startServer }
+export {
+  app,
+  handleVerifyRun,
+  inFlightVerifications,
+  isManualTestInProgress,
+  startServer,
+  registerSchedule,
+  stopAllSchedules,
+  getScheduledJobs
+}
 
