@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import { runBrowser } from './browserRunner.js'
 import { TestRun } from './models/TestRun.js'
+import { ScheduledTest } from './models/ScheduledTest.js'
 import { analyzeFailures } from './failureAnalyzer.js'
 import { analyzeWithGroq } from './aiProvider.js'
 import { compareTestRuns } from './fixVerification.js'
@@ -16,8 +17,11 @@ import {
 } from './regressionWebhook.js'
 import {
   registerSchedule,
+  unregisterSchedule,
   stopAllSchedules,
-  getScheduledJobs
+  getScheduledJobs,
+  getScheduledJob,
+  normalizeUrl
 } from './scheduledTestRunner.js'
 
 dotenv.config()
@@ -386,13 +390,355 @@ app.post('/api/regression-alerts/test', async (req, res) => {
   }
 })
 
+const inFlightScheduleUpdates = new Set()
+
+app.post('/api/schedules', async (req, res) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid request body'
+    })
+  }
+
+  const { url, intervalMinutes, enabled } = req.body
+
+  const normalizedUrl = normalizeUrl(url)
+  if (!normalizedUrl) {
+    return res.status(400).json({
+      error: 'Invalid URL: must be a valid HTTP or HTTPS URL'
+    })
+  }
+
+  if (
+    typeof intervalMinutes !== 'number' ||
+    !Number.isFinite(intervalMinutes) ||
+    intervalMinutes < 1
+  ) {
+    return res.status(400).json({
+      error: 'Invalid interval: must be a positive number of at least 1 minute'
+    })
+  }
+
+  try {
+    const existing = await ScheduledTest.findOne({ url: normalizedUrl })
+    if (existing) {
+      return res.status(409).json({
+        error: 'Schedule already exists for this URL',
+        code: 'DUPLICATE_SCHEDULE'
+      })
+    }
+
+    const isEnabled = enabled !== undefined ? Boolean(enabled) : true
+    const schedule = new ScheduledTest({
+      url: normalizedUrl,
+      intervalMinutes,
+      enabled: isEnabled
+    })
+    schedule.jobId = schedule._id.toString()
+    await schedule.save()
+
+    if (schedule.enabled) {
+      try {
+        registerSchedule({
+          id: schedule._id.toString(),
+          url: schedule.url,
+          intervalMinutes: schedule.intervalMinutes,
+          minIntervalMinutes: 1
+        })
+      } catch (regError) {
+        await ScheduledTest.findByIdAndDelete(schedule._id)
+        return res.status(500).json({
+          error: 'Failed to register runtime schedule',
+          details: regError.message
+        })
+      }
+    }
+
+    return res.status(201).json(schedule)
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        error: 'Schedule already exists for this URL',
+        code: 'DUPLICATE_SCHEDULE'
+      })
+    }
+    return res.status(500).json({
+      error: 'Failed to create schedule'
+    })
+  }
+})
+
+app.get('/api/schedules', async (req, res) => {
+  try {
+    let limit = 50
+    if (req.query.limit !== undefined) {
+      const parsed = parseInt(req.query.limit, 10)
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        limit = Math.min(parsed, 100)
+      }
+    }
+    const schedules = await ScheduledTest.find().sort({ createdAt: -1 }).limit(limit)
+    return res.json(schedules)
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to retrieve schedules'
+    })
+  }
+})
+
+app.get('/api/schedules/:id', async (req, res) => {
+  const { id } = req.params
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({
+      error: 'Invalid schedule ID'
+    })
+  }
+
+  try {
+    const schedule = await ScheduledTest.findById(id)
+    if (!schedule) {
+      return res.status(404).json({
+        error: 'Schedule not found'
+      })
+    }
+    return res.json(schedule)
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to retrieve schedule'
+    })
+  }
+})
+
+app.patch('/api/schedules/:id', async (req, res) => {
+  const { id } = req.params
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({
+      error: 'Invalid schedule ID'
+    })
+  }
+
+  if (inFlightScheduleUpdates.has(id)) {
+    return res.status(409).json({
+      error: 'Update already in progress for this schedule',
+      code: 'UPDATE_IN_PROGRESS'
+    })
+  }
+
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid request body'
+    })
+  }
+
+  const allowedFields = ['url', 'intervalMinutes', 'enabled']
+  const keys = Object.keys(req.body)
+  if (keys.length === 0) {
+    return res.status(400).json({
+      error: 'No fields provided to update'
+    })
+  }
+
+  for (const key of keys) {
+    if (!allowedFields.includes(key)) {
+      return res.status(400).json({
+        error: `Unsupported field: ${key}`
+      })
+    }
+  }
+
+  let normalizedUrl = null
+  if (req.body.url !== undefined) {
+    normalizedUrl = normalizeUrl(req.body.url)
+    if (!normalizedUrl) {
+      return res.status(400).json({
+        error: 'Invalid URL: must be a valid HTTP or HTTPS URL'
+      })
+    }
+  }
+
+  if (req.body.intervalMinutes !== undefined) {
+    if (
+      typeof req.body.intervalMinutes !== 'number' ||
+      !Number.isFinite(req.body.intervalMinutes) ||
+      req.body.intervalMinutes < 1
+    ) {
+      return res.status(400).json({
+        error: 'Invalid interval: must be a positive number of at least 1 minute'
+      })
+    }
+  }
+
+  if (req.body.enabled !== undefined && typeof req.body.enabled !== 'boolean') {
+    return res.status(400).json({
+      error: 'Invalid enabled value: must be a boolean'
+    })
+  }
+
+  inFlightScheduleUpdates.add(id)
+
+  try {
+    const schedule = await ScheduledTest.findById(id)
+    if (!schedule) {
+      return res.status(404).json({
+        error: 'Schedule not found'
+      })
+    }
+
+    if (normalizedUrl && normalizedUrl !== schedule.url) {
+      const duplicate = await ScheduledTest.findOne({
+        url: normalizedUrl,
+        _id: { $ne: id }
+      })
+      if (duplicate) {
+        return res.status(409).json({
+          error: 'Schedule already exists for this URL',
+          code: 'DUPLICATE_SCHEDULE'
+        })
+      }
+    }
+
+    const previousConfig = {
+      url: schedule.url,
+      intervalMinutes: schedule.intervalMinutes,
+      enabled: schedule.enabled
+    }
+
+    if (normalizedUrl) {
+      schedule.url = normalizedUrl
+    }
+    if (req.body.intervalMinutes !== undefined) {
+      schedule.intervalMinutes = req.body.intervalMinutes
+    }
+    if (req.body.enabled !== undefined) {
+      schedule.enabled = req.body.enabled
+    }
+
+    await schedule.save()
+
+    unregisterSchedule(schedule._id.toString())
+    unregisterSchedule(previousConfig.url)
+
+    if (schedule.enabled) {
+      try {
+        registerSchedule({
+          id: schedule._id.toString(),
+          url: schedule.url,
+          intervalMinutes: schedule.intervalMinutes,
+          minIntervalMinutes: 1
+        })
+      } catch (regErr) {
+        schedule.url = previousConfig.url
+        schedule.intervalMinutes = previousConfig.intervalMinutes
+        schedule.enabled = previousConfig.enabled
+        await schedule.save()
+        if (previousConfig.enabled) {
+          try {
+            registerSchedule({
+              id: schedule._id.toString(),
+              url: previousConfig.url,
+              intervalMinutes: previousConfig.intervalMinutes,
+              minIntervalMinutes: 1
+            })
+          } catch {}
+        }
+        return res.status(500).json({
+          error: 'Failed to update runtime schedule registration',
+          details: regErr.message
+        })
+      }
+    }
+
+    return res.json(schedule)
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        error: 'Schedule already exists for this URL',
+        code: 'DUPLICATE_SCHEDULE'
+      })
+    }
+    return res.status(500).json({
+      error: 'Failed to update schedule'
+    })
+  } finally {
+    inFlightScheduleUpdates.delete(id)
+  }
+})
+
+app.delete('/api/schedules/:id', async (req, res) => {
+  const { id } = req.params
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({
+      error: 'Invalid schedule ID'
+    })
+  }
+
+  try {
+    const schedule = await ScheduledTest.findById(id)
+    if (!schedule) {
+      return res.status(404).json({
+        error: 'Schedule not found'
+      })
+    }
+
+    unregisterSchedule(schedule._id.toString())
+    unregisterSchedule(schedule.url)
+
+    await ScheduledTest.findByIdAndDelete(id)
+
+    return res.json({
+      message: 'Schedule deleted successfully',
+      id: schedule._id.toString()
+    })
+  } catch {
+    return res.status(500).json({
+      error: 'Failed to delete schedule'
+    })
+  }
+})
+
+const initializeScheduledTests = async () => {
+  try {
+    const enabledSchedules = await ScheduledTest.find({ enabled: true })
+    let registeredCount = 0
+    for (const schedule of enabledSchedules) {
+      try {
+        if (!getScheduledJob(schedule._id.toString()) && !getScheduledJob(schedule.url)) {
+          registerSchedule({
+            id: schedule._id.toString(),
+            url: schedule.url,
+            intervalMinutes: schedule.intervalMinutes,
+            minIntervalMinutes: 1
+          })
+          registeredCount++
+        }
+      } catch (err) {
+        console.error(`Failed to register schedule ${schedule._id}:`, err.message)
+      }
+    }
+    return registeredCount
+  } catch (err) {
+    console.error('Failed to initialize scheduled tests:', err.message)
+    return 0
+  }
+}
+
+const shutdownServer = () => {
+  stopAllSchedules()
+}
+
 const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI)
     console.log(`Connected to MongoDB at ${MONGODB_URI}`)
-    app.listen(PORT, () => {
+    await initializeScheduledTests()
+    const server = app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`)
     })
+    process.on('SIGTERM', () => shutdownServer())
+    process.on('SIGINT', () => shutdownServer())
+    return server
   } catch (error) {
     console.error('Failed to connect to MongoDB:', error.message)
     process.exit(1)
@@ -408,9 +754,15 @@ export {
   handleVerifyRun,
   inFlightVerifications,
   isManualTestInProgress,
+  inFlightScheduleUpdates,
   startServer,
+  shutdownServer,
+  initializeScheduledTests,
+  ScheduledTest,
   registerSchedule,
+  unregisterSchedule,
   stopAllSchedules,
-  getScheduledJobs
+  getScheduledJobs,
+  getScheduledJob
 }
 
