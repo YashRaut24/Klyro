@@ -118,6 +118,60 @@ const findingSchema = new mongoose.Schema(
   }
 )
 
+const validateMetric = (v) => v === null || v === undefined || (typeof v === 'number' && Number.isFinite(v) && v >= 0)
+
+const performanceMetricsSchema = new mongoose.Schema(
+  {
+    navigationDurationMs: {
+      type: Number,
+      default: null,
+      validate: {
+        validator: validateMetric,
+        message: 'navigationDurationMs must be a finite non-negative number or null'
+      }
+    },
+    domContentLoadedDurationMs: {
+      type: Number,
+      default: null,
+      validate: {
+        validator: validateMetric,
+        message: 'domContentLoadedDurationMs must be a finite non-negative number or null'
+      }
+    },
+    firstContentfulPaintMs: {
+      type: Number,
+      default: null,
+      validate: {
+        validator: validateMetric,
+        message: 'firstContentfulPaintMs must be a finite non-negative number or null'
+      }
+    },
+    largestContentfulPaintMs: {
+      type: Number,
+      default: null,
+      validate: {
+        validator: validateMetric,
+        message: 'largestContentfulPaintMs must be a finite non-negative number or null'
+      }
+    },
+    totalTransferredBytes: {
+      type: Number,
+      default: null,
+      validate: {
+        validator: validateMetric,
+        message: 'totalTransferredBytes must be a finite non-negative number or null'
+      }
+    },
+    transferredBytesDescription: {
+      type: String,
+      default: 'Browser-observed estimate of transferred resource bytes via Resource Timing API'
+    }
+  },
+  {
+    _id: false
+  }
+)
+
 const testRunSchema = new mongoose.Schema(
   {
     url: {
@@ -176,6 +230,10 @@ const testRunSchema = new mongoose.Schema(
     },
     screenshotError: {
       type: String,
+      default: null
+    },
+    performanceMetrics: {
+      type: performanceMetricsSchema,
       default: null
     }
   },
