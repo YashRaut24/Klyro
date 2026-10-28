@@ -1353,6 +1353,11 @@ function App() {
 
                         {evidence && !isLoadingEvidence && !itemError && (
                           <div className="evidence-content">
+                            <div className="evidence-group performance-metrics-group">
+                              <h4 className="evidence-group-title">Performance Metrics</h4>
+                              {renderPerformanceMetrics(evidence.performanceMetrics ?? run.performanceMetrics)}
+                            </div>
+
                             <div className="evidence-group findings-group">
                               <h4 className="evidence-group-title">
                                 Analysis Findings ({evidence.findings?.length || 0})

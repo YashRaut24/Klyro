@@ -2329,6 +2329,86 @@
   cursor: not-allowed;
 }
 
+.result-performance-section {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.result-performance-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.performance-metrics-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.perf-metrics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.perf-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.perf-metric-card {
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  transition: border-color 0.15s ease;
+}
+
+.perf-metric-card:hover {
+  border-color: #334155;
+}
+
+.perf-metric-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
+  line-height: 1.25;
+}
+
+.perf-metric-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #38bdf8;
+  white-space: nowrap;
+}
+
+.perf-metric-value.value-unavailable {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.perf-metrics-description {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+  margin: 0;
+  line-height: 1.4;
+}
+
 @media (max-width: 600px) {
   .input-group {
     flex-direction: column;
@@ -2563,6 +2643,26 @@
     flex: 1;
     text-align: center;
   }
+
+  .perf-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .perf-metric-card[data-metric="total-transferred-bytes"] {
+    grid-column: span 2;
+  }
 }
+
+@media (max-width: 360px) {
+  .perf-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .perf-metric-card[data-metric="total-transferred-bytes"] {
+    grid-column: span 1;
+  }
+}
+
 
 
