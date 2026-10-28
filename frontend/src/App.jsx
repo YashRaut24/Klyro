@@ -621,6 +621,69 @@ function App() {
     })
   }
 
+  const formatMetricMs = (val) => {
+    if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+      return `${val} ms`
+    }
+    return 'Not available'
+  }
+
+  const formatMetricBytes = (val) => {
+    if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+      return `${val} B`
+    }
+    return 'Not available'
+  }
+
+  const renderPerformanceMetrics = (metrics) => {
+    const navDuration = formatMetricMs(metrics?.navigationDurationMs)
+    const dclDuration = formatMetricMs(metrics?.domContentLoadedDurationMs)
+    const fcp = formatMetricMs(metrics?.firstContentfulPaintMs)
+    const lcp = formatMetricMs(metrics?.largestContentfulPaintMs)
+    const transferredBytes = formatMetricBytes(metrics?.totalTransferredBytes)
+    const description = metrics?.transferredBytesDescription
+
+    return (
+      <div className="perf-metrics-container" aria-label="Performance Metrics">
+        <div className="perf-metrics-grid">
+          <div className="perf-metric-card" data-metric="navigation-duration">
+            <span className="perf-metric-label">Navigation duration</span>
+            <span className={`perf-metric-value ${navDuration === 'Not available' ? 'value-unavailable' : ''}`}>
+              {navDuration}
+            </span>
+          </div>
+          <div className="perf-metric-card" data-metric="dom-content-loaded">
+            <span className="perf-metric-label">DOM Content Loaded</span>
+            <span className={`perf-metric-value ${dclDuration === 'Not available' ? 'value-unavailable' : ''}`}>
+              {dclDuration}
+            </span>
+          </div>
+          <div className="perf-metric-card" data-metric="first-contentful-paint">
+            <span className="perf-metric-label">First Contentful Paint (FCP)</span>
+            <span className={`perf-metric-value ${fcp === 'Not available' ? 'value-unavailable' : ''}`}>
+              {fcp}
+            </span>
+          </div>
+          <div className="perf-metric-card" data-metric="largest-contentful-paint">
+            <span className="perf-metric-label">Largest Contentful Paint (LCP)</span>
+            <span className={`perf-metric-value ${lcp === 'Not available' ? 'value-unavailable' : ''}`}>
+              {lcp}
+            </span>
+          </div>
+          <div className="perf-metric-card" data-metric="total-transferred-bytes">
+            <span className="perf-metric-label">Total transferred bytes</span>
+            <span className={`perf-metric-value ${transferredBytes === 'Not available' ? 'value-unavailable' : ''}`}>
+              {transferredBytes}
+            </span>
+          </div>
+        </div>
+        {description && (
+          <p className="perf-metrics-description">{description}</p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -698,6 +761,11 @@ function App() {
                   </span>
                 </span>
               </div>
+            </div>
+
+            <div className="result-performance-section" aria-label="Performance Metrics">
+              <h3 className="result-performance-title">Performance Metrics</h3>
+              {renderPerformanceMetrics(result.performanceMetrics)}
             </div>
           </div>
         )}
