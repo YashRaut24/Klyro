@@ -1,9 +1,12 @@
 import assert from 'node:assert'
 import http from 'node:http'
+import net from 'node:net'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import mongoose from 'mongoose'
+import { runBrowser } from './src/browserRunner.js'
 import { app } from './src/server.js'
+import { validatePublicHttpUrl } from './src/ssrfProtection.js'
 import { TestRun } from './src/models/TestRun.js'
 
 console.log('--- STARTING CRITICAL USER JOURNEY END-TO-END AUDIT ---')
@@ -23,10 +26,18 @@ let fixtureBaseUrl
 let apiBaseUrl
 const createdRunIds = []
 const createdScreenshotPaths = []
+let privateFixtureRequestCount = 0
 
 const startServers = async () => {
   fixtureServer = http.createServer((req, res) => {
-    if (req.url === '/style.css') {
+    if (req.url === '/private-resource') {
+      privateFixtureRequestCount++
+      res.writeHead(200, { 'Content-Type': 'text/plain' })
+      res.end('A private-network request bypassed the SSRF proxy')
+    } else if (req.url === '/redirect-to-private') {
+      res.writeHead(302, { Location: `http://127.0.0.1:${fixtureServer.address().port}/private-resource` })
+      res.end()
+    } else if (req.url === '/style.css') {
       res.writeHead(200, { 'Content-Type': 'text/css' })
       res.end('body { font-family: sans-serif; background: #fff; color: #000; }')
     } else if (req.url === '/api/error-endpoint') {
@@ -41,6 +52,8 @@ const startServers = async () => {
 </head>
 <body>
   <h1>Failing Test Page</h1>
+  <img src="http://127.0.0.1:${fixtureServer.address().port}/private-resource">
+  <img src="http://klyro.test:${fixtureServer.address().port}/redirect-to-private">
   <script>
     console.error('Deliberate console error in test fixture');
     fetch('/api/error-endpoint').catch(() => {});
@@ -71,10 +84,23 @@ const startServers = async () => {
   await new Promise((resolve) => {
     fixtureServer.listen(0, '127.0.0.1', () => {
       const port = fixtureServer.address().port
-      fixtureBaseUrl = `http://127.0.0.1:${port}`
+      fixtureBaseUrl = `http://klyro.test:${port}`
       resolve()
     })
   })
+
+  const testNetworkOptions = {
+    lookup: async (hostname) => {
+      assert.strictEqual(hostname, 'klyro.test')
+      return [{ address: '93.184.216.34', family: 4 }]
+    },
+    connect: (options, callback) => net.connect({
+      host: '127.0.0.1',
+      port: options.port
+    }, callback)
+  }
+  app.locals.validateBrowserUrl = (url) => validatePublicHttpUrl(url, testNetworkOptions)
+  app.locals.runBrowser = (url) => runBrowser(url, testNetworkOptions)
 
   apiServer = app.listen(0, '127.0.0.1')
   await new Promise((resolve) => {
@@ -189,6 +215,8 @@ try {
   assert(Array.isArray(failingData.httpErrors))
   assert(failingData.httpErrors.length > 0, 'HTTP errors captured')
   assert(failingData.httpErrors.some((h) => h.status === 500 && h.url.includes('/api/error-endpoint')))
+  assert(failingData.failedRequests.some((request) => request.url.includes('/private-resource')))
+  assert.strictEqual(privateFixtureRequestCount, 0, 'Direct and redirected private subresources never reach the fixture server')
 
   assert(Array.isArray(failingData.findings))
   assert(failingData.findings.length >= 3, 'Findings generated from all failure categories')
@@ -264,4 +292,3 @@ try {
   }
   await mongoose.disconnect()
 }
-

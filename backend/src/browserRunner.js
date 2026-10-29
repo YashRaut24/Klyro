@@ -1,17 +1,43 @@
 import { chromium } from 'playwright'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import {
+  createSsrfProxyServer,
+  isAllowedBrowserRequestUrl,
+  validatePublicHttpUrl
+} from './ssrfProtection.js'
 
-export const runBrowser = async (url) => {
+export const runBrowser = async (url, networkOptions = {}) => {
   let browser
+  let proxy
   const pageErrors = []
   const consoleErrors = []
   const failedRequests = []
   const httpErrors = []
 
   try {
-    browser = await chromium.launch({ headless: true })
+    await validatePublicHttpUrl(url, networkOptions)
+    proxy = createSsrfProxyServer(networkOptions)
+    const proxyPort = await proxy.listen()
+    browser = await chromium.launch({
+      headless: true,
+      proxy: {
+        server: `http://127.0.0.1:${proxyPort}`,
+        bypass: '<-loopback>'
+      },
+      args: [
+        '--disable-quic',
+        '--dns-prefetch-disable',
+        '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
+      ]
+    })
     const page = await browser.newPage()
+    await page.route('**/*', (route) => {
+      if (isAllowedBrowserRequestUrl(route.request().url())) {
+        return route.continue()
+      }
+      return route.abort()
+    })
 
     page.on('pageerror', (exception) => {
       pageErrors.push({
@@ -204,8 +230,14 @@ export const runBrowser = async (url) => {
       performanceMetrics
     }
   } finally {
-    if (browser) {
-      await browser.close()
+    try {
+      if (browser) {
+        await browser.close()
+      }
+    } finally {
+      if (proxy) {
+        await proxy.close()
+      }
     }
   }
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert'
 import http from 'node:http'
+import net from 'node:net'
 import mongoose from 'mongoose'
 import { runBrowser } from './src/browserRunner.js'
 import { TestRun } from './src/models/TestRun.js'
@@ -39,17 +40,28 @@ const startServer = () => {
 
     testServer.listen(0, '127.0.0.1', () => {
       const port = testServer.address().port
-      baseUrl = `http://127.0.0.1:${port}`
+      baseUrl = `http://klyro.test:${port}`
       resolve()
     })
   })
 }
 
+const runFixtureBrowser = (url) => runBrowser(url, {
+  lookup: async (hostname) => {
+    assert.strictEqual(hostname, 'klyro.test')
+    return [{ address: '93.184.216.34', family: 4 }]
+  },
+  connect: (options, callback) => net.connect({
+    host: '127.0.0.1',
+    port: options.port
+  }, callback)
+})
+
 try {
   await startServer()
 
   console.log('Test 1: Successful collection of available navigation metrics')
-  const result1 = await runBrowser(`${baseUrl}/`)
+  const result1 = await runFixtureBrowser(`${baseUrl}/`)
   assert(result1)
   assert(result1.performanceMetrics)
   assert.strictEqual(typeof result1.performanceMetrics.navigationDurationMs, 'number')
@@ -61,7 +73,7 @@ try {
   console.log('Passed Test 1: Navigation and DOM content loaded durations collected successfully.\n')
 
   console.log('Test 2: Missing or unsupported paint metrics produce null')
-  const result2 = await runBrowser(`${baseUrl}/no-paint`)
+  const result2 = await runFixtureBrowser(`${baseUrl}/no-paint`)
   assert(result2)
   assert(result2.performanceMetrics)
   assert.strictEqual(result2.performanceMetrics.firstContentfulPaintMs, null)
@@ -69,7 +81,7 @@ try {
   console.log('Passed Test 2: Missing paint metrics produce null instead of zero.\n')
 
   console.log('Test 3: Missing navigation timing values are handled safely')
-  const result3 = await runBrowser(`${baseUrl}/no-timing`)
+  const result3 = await runFixtureBrowser(`${baseUrl}/no-timing`)
   assert(result3)
   assert(result3.performanceMetrics)
   assert.strictEqual(result3.performanceMetrics.navigationDurationMs, null)
@@ -109,7 +121,7 @@ try {
   console.log('Passed Test 5: Resource transfer size reported accurately with unit and description.\n')
 
   console.log('Test 6: Browser navigation still returns the existing metadata and evidence fields')
-  const result6 = await runBrowser(`${baseUrl}/with-errors`)
+  const result6 = await runFixtureBrowser(`${baseUrl}/with-errors`)
   assert.strictEqual(result6.url, `${baseUrl}/with-errors`)
   assert.strictEqual(result6.finalUrl, `${baseUrl}/with-errors`)
   assert.strictEqual(result6.title, 'Error page')
@@ -174,7 +186,7 @@ try {
   console.log('Passed Test 8: Older runs without performance metrics remain readable and null.\n')
 
   console.log('Test 9: Metric collection failure does not fail an otherwise successful browser run')
-  const result9 = await runBrowser(`${baseUrl}/throw-metrics`)
+  const result9 = await runFixtureBrowser(`${baseUrl}/throw-metrics`)
   assert(result9)
   assert.strictEqual(result9.status, 200)
   assert.strictEqual(result9.title, 'Throwing page')
@@ -185,14 +197,14 @@ try {
   console.log('Test 10: Browser cleanup still occurs after navigation or metric-collection errors')
   let navigationErrorThrown = false
   try {
-    await runBrowser('http://127.0.0.1:1')
+    await runFixtureBrowser('http://klyro.test:1')
   } catch (err) {
     navigationErrorThrown = true
     assert(err.message)
   }
   assert.strictEqual(navigationErrorThrown, true)
 
-  const postCleanupRun = await runBrowser(`${baseUrl}/`)
+  const postCleanupRun = await runFixtureBrowser(`${baseUrl}/`)
   assert.strictEqual(postCleanupRun.status, 200)
   console.log('Passed Test 10: Browser resources cleaned up properly after navigation errors.\n')
 

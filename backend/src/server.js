@@ -25,6 +25,7 @@ import {
 } from './scheduledTestRunner.js'
 import { handleServerError, securityHeaders } from './securityMiddleware.js'
 import { createRateLimiter } from './rateLimiter.js'
+import { validatePublicHttpUrl } from './ssrfProtection.js'
 
 dotenv.config()
 
@@ -33,6 +34,8 @@ const PORT = process.env.PORT || 5000
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/klyro'
 const apiRateLimiter = createRateLimiter({ limit: 100, windowMs: 15 * 60 * 1000 })
 const resourceRateLimiter = createRateLimiter({ limit: 5, windowMs: 15 * 60 * 1000 })
+app.locals.runBrowser = runBrowser
+app.locals.validateBrowserUrl = validatePublicHttpUrl
 
 const ensureFindings = (testRun) => {
   if (!testRun) return testRun
@@ -78,22 +81,22 @@ app.post('/api/browser/run', resourceRateLimiter, async (req, res) => {
   }
 
   try {
-    const parsedUrl = new URL(url)
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      return res.status(400).json({
-        error: 'Only HTTP and HTTPS URLs are supported'
-      })
-    }
+    await app.locals.validateBrowserUrl(url)
   } catch {
     return res.status(400).json({
-      error: 'Malformed URL provided'
+      error: 'URL destination is not allowed'
     })
   }
 
   let result
   try {
-    result = await runBrowser(url)
-  } catch {
+    result = await app.locals.runBrowser(url)
+  } catch (error) {
+    if (error.code === 'SSRF_BLOCKED') {
+      return res.status(400).json({
+        error: 'URL destination is not allowed'
+      })
+    }
     return res.status(502).json({
       error: 'Failed to navigate to website'
     })
@@ -235,8 +238,13 @@ const handleVerifyRun = async (req, res) => {
 
     let freshResult
     try {
-      freshResult = await runBrowser(baselineRun.url)
-    } catch {
+      freshResult = await app.locals.runBrowser(baselineRun.url)
+    } catch (error) {
+      if (error.code === 'SSRF_BLOCKED') {
+        return res.status(400).json({
+          error: 'URL destination is not allowed'
+        })
+      }
       return res.status(502).json({
         error: 'Failed to navigate to website'
       })
