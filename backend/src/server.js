@@ -24,12 +24,15 @@ import {
   normalizeUrl
 } from './scheduledTestRunner.js'
 import { handleServerError, securityHeaders } from './securityMiddleware.js'
+import { createRateLimiter } from './rateLimiter.js'
 
 dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 5000
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/klyro'
+const apiRateLimiter = createRateLimiter({ limit: 100, windowMs: 15 * 60 * 1000 })
+const resourceRateLimiter = createRateLimiter({ limit: 5, windowMs: 15 * 60 * 1000 })
 
 const ensureFindings = (testRun) => {
   if (!testRun) return testRun
@@ -54,6 +57,8 @@ app.use((req, res, next) => {
   next()
 })
 
+app.use('/api', apiRateLimiter)
+
 app.use('/screenshots', express.static(path.resolve('screenshots')))
 
 app.get('/api/health', (req, res) => {
@@ -63,7 +68,7 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-app.post('/api/browser/run', async (req, res) => {
+app.post('/api/browser/run', resourceRateLimiter, async (req, res) => {
   const { url } = req.body || {}
 
   if (!url || typeof url !== 'string') {
@@ -196,8 +201,8 @@ const handleAiAnalysis = async (req, res) => {
   }
 }
 
-app.post('/api/browser/runs/:id/ai-analysis', handleAiAnalysis)
-app.post('/api/browser/runs/:id/analyze', handleAiAnalysis)
+app.post('/api/browser/runs/:id/ai-analysis', resourceRateLimiter, handleAiAnalysis)
+app.post('/api/browser/runs/:id/analyze', resourceRateLimiter, handleAiAnalysis)
 
 const inFlightVerifications = new Set()
 
@@ -291,7 +296,7 @@ const handleVerifyRun = async (req, res) => {
   }
 }
 
-app.post('/api/browser/runs/:id/verify', handleVerifyRun)
+app.post('/api/browser/runs/:id/verify', resourceRateLimiter, handleVerifyRun)
 
 app.get('/api/regression-alerts/status', (req, res) => {
   try {
