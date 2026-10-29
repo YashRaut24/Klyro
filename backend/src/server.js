@@ -23,6 +23,7 @@ import {
   getScheduledJob,
   normalizeUrl
 } from './scheduledTestRunner.js'
+import { handleServerError, securityHeaders } from './securityMiddleware.js'
 
 dotenv.config()
 
@@ -40,6 +41,7 @@ const ensureFindings = (testRun) => {
   return runObj
 }
 
+app.use(securityHeaders)
 app.use(express.json())
 
 app.use((req, res, next) => {
@@ -86,10 +88,9 @@ app.post('/api/browser/run', async (req, res) => {
   let result
   try {
     result = await runBrowser(url)
-  } catch (error) {
-    const message = error.message ? error.message.split('\n')[0] : 'Failed to navigate to website'
+  } catch {
     return res.status(502).json({
-      error: message
+      error: 'Failed to navigate to website'
     })
   }
 
@@ -172,25 +173,25 @@ const handleAiAnalysis = async (req, res) => {
   } catch (error) {
     if (error.code === 'MISSING_API_KEY') {
       return res.status(503).json({
-        error: error.message,
+        error: 'AI analysis is unavailable',
         code: error.code
       })
     }
     if (error.code === 'RATE_LIMIT') {
       return res.status(429).json({
-        error: error.message,
+        error: 'AI provider rate limit reached',
         code: error.code
       })
     }
     if (error.code === 'MALFORMED_RESPONSE') {
       return res.status(502).json({
-        error: error.message,
+        error: 'AI provider returned an unusable response',
         code: error.code
       })
     }
-    return res.status(error.status || 500).json({
-      error: error.message || 'Failed to complete AI analysis',
-      code: error.code || 'AI_ANALYSIS_FAILED'
+    return res.status(500).json({
+      error: 'Failed to complete AI analysis',
+      code: 'AI_ANALYSIS_FAILED'
     })
   }
 }
@@ -230,10 +231,9 @@ const handleVerifyRun = async (req, res) => {
     let freshResult
     try {
       freshResult = await runBrowser(baselineRun.url)
-    } catch (error) {
-      const message = error.message ? error.message.split('\n')[0] : 'Failed to navigate to website'
+    } catch {
       return res.status(502).json({
-        error: message
+        error: 'Failed to navigate to website'
       })
     }
 
@@ -444,11 +444,10 @@ app.post('/api/schedules', async (req, res) => {
           intervalMinutes: schedule.intervalMinutes,
           minIntervalMinutes: 1
         })
-      } catch (regError) {
+      } catch {
         await ScheduledTest.findByIdAndDelete(schedule._id)
         return res.status(500).json({
-          error: 'Failed to register runtime schedule',
-          details: regError.message
+          error: 'Failed to register runtime schedule'
         })
       }
     }
@@ -627,7 +626,7 @@ app.patch('/api/schedules/:id', async (req, res) => {
           intervalMinutes: schedule.intervalMinutes,
           minIntervalMinutes: 1
         })
-      } catch (regErr) {
+      } catch {
         schedule.url = previousConfig.url
         schedule.intervalMinutes = previousConfig.intervalMinutes
         schedule.enabled = previousConfig.enabled
@@ -643,8 +642,7 @@ app.patch('/api/schedules/:id', async (req, res) => {
           } catch {}
         }
         return res.status(500).json({
-          error: 'Failed to update runtime schedule registration',
-          details: regErr.message
+          error: 'Failed to update runtime schedule registration'
         })
       }
     }
@@ -697,6 +695,8 @@ app.delete('/api/schedules/:id', async (req, res) => {
     })
   }
 })
+
+app.use(handleServerError)
 
 const initializeScheduledTests = async () => {
   try {
@@ -765,4 +765,3 @@ export {
   getScheduledJobs,
   getScheduledJob
 }
-
