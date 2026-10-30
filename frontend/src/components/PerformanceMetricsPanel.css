@@ -1,0 +1,78 @@
+.perf-metrics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.perf-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.perf-metric-card {
+  background-color: #171717;
+  border: 1px solid #282828;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  transition: border-color 0.15s ease;
+}
+
+.perf-metric-card:hover {
+  border-color: #3f3f3f;
+}
+
+.perf-metric-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #a1a1a1;
+  line-height: 1.25;
+}
+
+.perf-metric-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #a5a5a5;
+  white-space: nowrap;
+}
+
+.perf-metric-value.value-unavailable {
+  color: #727272;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.perf-metrics-description {
+  font-size: 0.75rem;
+  color: #727272;
+  font-style: italic;
+  margin: 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .perf-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .perf-metric-card[data-metric="total-transferred-bytes"] {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 360px) {
+  .perf-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .perf-metric-card[data-metric="total-transferred-bytes"] {
+    grid-column: span 1;
+  }
+}
