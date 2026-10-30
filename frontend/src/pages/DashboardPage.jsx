@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import './DashboardPage.css'
 import RegressionAlertsPanel from '../components/RegressionAlertsPanel.jsx'
 import TestRunHistoryPanel from '../components/TestRunHistoryPanel.jsx'
@@ -13,10 +13,6 @@ function DashboardPage() {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
 
-  const [history, setHistory] = useState([])
-  const [isHistoryLoading, setIsHistoryLoading] = useState(true)
-  const [historyError, setHistoryError] = useState(null)
-
   const [expandedIds, setExpandedIds] = useState({})
   const [evidenceCache, setEvidenceCache] = useState({})
   const [evidenceLoading, setEvidenceLoading] = useState({})
@@ -28,29 +24,7 @@ function DashboardPage() {
   const [verificationError, setVerificationError] = useState({})
   const [filter, setFilter] = useState('all')
   const [alertRefreshToken, setAlertRefreshToken] = useState(0)
-
-  const fetchHistory = async () => {
-    setHistoryError(null)
-
-    try {
-      const response = await fetch('http://localhost:5000/api/browser/runs')
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to retrieve test runs.')
-      }
-
-      setHistory(Array.isArray(data) ? data : [])
-    } catch (err) {
-      setHistoryError(err.message || 'Failed to load test history.')
-    } finally {
-      setIsHistoryLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchHistory()
-  }, [])
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -100,7 +74,7 @@ function DashboardPage() {
       }
 
       setResult(data)
-      fetchHistory()
+      setHistoryRefreshToken((current) => current + 1)
     } catch (err) {
       setError(err.message || 'An unexpected error occurred.')
     } finally {
@@ -239,11 +213,7 @@ function DashboardPage() {
         }
       })
 
-      setHistory((prev) =>
-        prev.map((item) => (item._id === id ? { ...item, verificationReport: report } : item))
-      )
-
-      fetchHistory()
+      setHistoryRefreshToken((current) => current + 1)
     } catch (err) {
       setVerificationError((prev) => ({
         ...prev,
@@ -284,36 +254,6 @@ function DashboardPage() {
         return 'All runs'
     }
   }
-
-  const filteredHistory = history.filter((run) => {
-    if (filter === 'all') {
-      return true
-    }
-
-    const report = evidenceCache[run._id]?.verificationReport || run.verificationReport
-    if (!report) {
-      return false
-    }
-
-    if (filter === 'verified') {
-      return report.status === 'verified'
-    }
-
-    if (filter === 'partially_verified') {
-      return report.status === 'partially_verified'
-    }
-
-    if (filter === 'not_verified') {
-      return report.status === 'not_verified'
-    }
-
-    if (filter === 'new_findings') {
-      const newCount = report.summary?.new ?? (Array.isArray(report.newFindings) ? report.newFindings.length : 0)
-      return newCount > 0
-    }
-
-    return true
-  })
 
   const formatTimestamp = (dateString) => {
     if (!dateString) {
@@ -367,12 +307,9 @@ function DashboardPage() {
         <ScheduledTestingPanel formatTimestamp={formatTimestamp} />
 
         <TestRunHistoryPanel
-          history={history}
-          isHistoryLoading={isHistoryLoading}
-          historyError={historyError}
+          refreshToken={historyRefreshToken}
           filter={filter}
           setFilter={setFilter}
-          filteredHistory={filteredHistory}
           formatFilterLabel={formatFilterLabel}
           expandedIds={expandedIds}
           evidenceCache={evidenceCache}

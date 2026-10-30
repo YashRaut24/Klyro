@@ -1,8 +1,67 @@
 import './TestRunHistoryPanel.css'
+import { useEffect, useState } from 'react'
 import PerformanceMetricsPanel from './PerformanceMetricsPanel.jsx'
 import TestRunHistoryFilters from './TestRunHistoryFilters.jsx'
+import TestRunHistoryFeedback from './TestRunHistoryFeedback.jsx'
 
-function TestRunHistoryPanel({ history, isHistoryLoading, historyError, filter, setFilter, filteredHistory, formatFilterLabel, expandedIds, evidenceCache, evidenceLoading, evidenceError, aiLoading, aiError, verificationLoading, verificationError, imageErrors, formatTimestamp, formatVerificationStatus, handleVerifyFix, handleToggleExpand, handleGenerateAiAnalysis, handleImageError }) {
+function TestRunHistoryPanel({ refreshToken, filter, setFilter, formatFilterLabel, expandedIds, evidenceCache, evidenceLoading, evidenceError, aiLoading, aiError, verificationLoading, verificationError, imageErrors, formatTimestamp, formatVerificationStatus, handleVerifyFix, handleToggleExpand, handleGenerateAiAnalysis, handleImageError }) {
+  const [history, setHistory] = useState([])
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState(null)
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      setHistoryError(null)
+
+      try {
+        const response = await fetch('http://localhost:5000/api/browser/runs')
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to retrieve test runs.')
+        }
+
+        setHistory(Array.isArray(data) ? data : [])
+      } catch (err) {
+        setHistoryError(err.message || 'Failed to load test history.')
+      } finally {
+        setIsHistoryLoading(false)
+      }
+    }
+
+    fetchHistory()
+  }, [refreshToken])
+
+  const filteredHistory = history.filter((run) => {
+    if (filter === 'all') {
+      return true
+    }
+
+    const report = evidenceCache[run._id]?.verificationReport || run.verificationReport
+    if (!report) {
+      return false
+    }
+
+    if (filter === 'verified') {
+      return report.status === 'verified'
+    }
+
+    if (filter === 'partially_verified') {
+      return report.status === 'partially_verified'
+    }
+
+    if (filter === 'not_verified') {
+      return report.status === 'not_verified'
+    }
+
+    if (filter === 'new_findings') {
+      const newCount = report.summary?.new ?? (Array.isArray(report.newFindings) ? report.newFindings.length : 0)
+      return newCount > 0
+    }
+
+    return true
+  })
+
   return (
         <section className="history-section" id="history" aria-label="Test Run History">
           <div className="history-header">
@@ -18,28 +77,15 @@ function TestRunHistoryPanel({ history, isHistoryLoading, historyError, filter, 
           <TestRunHistoryFilters filter={filter} setFilter={setFilter} />
 
           {isHistoryLoading && (
-            <div className="history-card history-loading" role="status">
-              <div className="spinner"></div>
-              <p className="status-title">Loading test history...</p>
-            </div>
+            <TestRunHistoryFeedback type="loading" />
           )}
 
           {historyError && !isHistoryLoading && (
-            <div className="history-card history-error" role="alert">
-              <div className="error-header">
-                <span className="status-badge error-badge">History Error</span>
-                <p className="error-message">{historyError}</p>
-              </div>
-            </div>
+            <TestRunHistoryFeedback type="error" error={historyError} />
           )}
 
           {!isHistoryLoading && !historyError && history.length === 0 && (
-            <div className="history-card history-empty">
-              <p className="empty-title">No test runs found</p>
-              <p className="empty-subtitle">
-                Enter a website URL above to start your first browser test run.
-              </p>
-            </div>
+            <TestRunHistoryFeedback type="empty" />
           )}
 
           {!isHistoryLoading && !historyError && history.length > 0 && filteredHistory.length === 0 && (
