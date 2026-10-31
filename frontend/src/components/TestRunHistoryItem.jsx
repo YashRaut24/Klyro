@@ -1,4 +1,5 @@
 import './TestRunHistoryItem.css'
+import TestRunStatusBadges from './TestRunStatusBadges.jsx'
 
 function TestRunHistoryItem({
   run,
@@ -20,44 +21,28 @@ function TestRunHistoryItem({
   return (
     <article className="history-item">
       <div className="history-item-header">
-        <span className={`status-indicator ${isSuccess ? 'indicator-ok' : 'indicator-error'}`}>
-          {isSuccess ? 'Success' : 'Error'}
-        </span>
+        <TestRunStatusBadges variant="run-status" isSuccess={isSuccess} />
         <span className="history-url">{run.url}</span>
-        <span className={`status-pill ${isSuccess ? 'status-ok' : 'status-warn'}`}>
-          {run.status ? `HTTP ${run.status}` : 'No Status'}
-        </span>
-        {currentVerification && currentVerification.status && (
-          <span className={`status-badge history-verification-badge verification-status-badge verification-status-${currentVerification.status}`}>
-            {formatVerificationStatus(currentVerification.status)}
-          </span>
-        )}
+        <TestRunStatusBadges
+          variant="http-verification"
+          run={run}
+          isSuccess={isSuccess}
+          currentVerification={currentVerification}
+          formatVerificationStatus={formatVerificationStatus}
+        />
       </div>
 
       <div className="history-item-body">
         <span className="history-page-title">{run.title || 'Untitled page'}</span>
         {(isBaselineRun || isVerificationRun) && (
           <div className="history-item-meta">
-            {isBaselineRun && (
-              <div className="run-linkage-wrapper">
-                <span className="run-type-badge run-type-baseline">Baseline Run</span>
-                {relatedVerificationId && (
-                  <span className="run-linkage-info">
-                    Verification Run: <span className="related-run-id">{relatedVerificationId}</span>
-                  </span>
-                )}
-              </div>
-            )}
-            {isVerificationRun && (
-              <div className="run-linkage-wrapper">
-                <span className="run-type-badge run-type-verification">Verification Run</span>
-                {relatedBaselineId && (
-                  <span className="run-linkage-info">
-                    Baseline Run: <span className="related-run-id">{relatedBaselineId}</span>
-                  </span>
-                )}
-              </div>
-            )}
+            <TestRunStatusBadges
+              variant="run-linkage"
+              isBaselineRun={isBaselineRun}
+              isVerificationRun={isVerificationRun}
+              relatedVerificationId={relatedVerificationId}
+              relatedBaselineId={relatedBaselineId}
+            />
           </div>
         )}
       </div>

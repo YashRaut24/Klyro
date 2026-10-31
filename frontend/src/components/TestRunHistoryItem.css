@@ -23,28 +23,6 @@
   gap: 0.75rem;
 }
 
-.status-indicator {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  flex-shrink: 0;
-}
-
-.indicator-ok {
-  background-color: rgba(145, 145, 145, 0.2);
-  color: #adadad;
-  border: 1px solid rgba(145, 145, 145, 0.4);
-}
-
-.indicator-error {
-  background-color: rgba(104, 104, 104, 0.2);
-  color: #8e8e8e;
-  border: 1px solid rgba(104, 104, 104, 0.4);
-}
-
 .history-url {
   color: #a5a5a5;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -111,15 +89,6 @@
   cursor: not-allowed;
 }
 
-.history-verification-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.2rem 0.55rem;
-  border-radius: 0.25rem;
-}
-
 .history-item-meta {
   display: flex;
   align-items: center;
@@ -133,28 +102,6 @@
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-}
-
-.run-type-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  white-space: nowrap;
-}
-
-.run-type-baseline {
-  background-color: rgba(165, 165, 165, 0.15);
-  color: #a5a5a5;
-  border: 1px solid rgba(165, 165, 165, 0.3);
-}
-
-.run-type-verification {
-  background-color: rgba(114, 114, 114, 0.15);
-  color: #999999;
-  border: 1px solid rgba(114, 114, 114, 0.3);
 }
 
 .run-linkage-info {
