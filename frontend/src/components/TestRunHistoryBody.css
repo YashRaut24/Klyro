@@ -1,0 +1,19 @@
+.history-item-body {
+  font-size: 0.925rem;
+  color: #fafafa;
+  font-weight: 500;
+}
+
+.history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.history-item-meta {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}

@@ -23,7 +23,7 @@ function TestRunEvidence({
   handleImageError
 }) {
   return (
-    <div className="evidence-panel">
+    <>
       {isLoadingEvidence && (
         <div className="evidence-loading" role="status">
           <div className="spinner"></div>
@@ -474,7 +474,7 @@ function TestRunEvidence({
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

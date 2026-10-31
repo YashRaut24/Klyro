@@ -1,0 +1,11 @@
+.history-page-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.history-timestamp {
+  font-size: 0.8rem;
+  color: #727272;
+}

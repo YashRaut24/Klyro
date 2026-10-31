@@ -2,6 +2,7 @@ import './TestRunHistoryPanel.css'
 import { useEffect, useState } from 'react'
 import TestRunHistoryFilters from './TestRunHistoryFilters.jsx'
 import TestRunHistoryFeedback from './TestRunHistoryFeedback.jsx'
+import TestRunHistoryStates from './TestRunHistoryStates.jsx'
 import TestRunHistoryItem from './TestRunHistoryItem.jsx'
 import TestRunEvidence from './TestRunEvidence.jsx'
 
@@ -78,15 +79,15 @@ function TestRunHistoryPanel({ refreshToken, filter, setFilter, formatFilterLabe
           <TestRunHistoryFilters filter={filter} setFilter={setFilter} />
 
           {isHistoryLoading && (
-            <TestRunHistoryFeedback type="loading" />
+            <TestRunHistoryStates type="loading" />
           )}
 
           {historyError && !isHistoryLoading && (
-            <TestRunHistoryFeedback type="error" error={historyError} />
+            <TestRunHistoryFeedback error={historyError} />
           )}
 
           {!isHistoryLoading && !historyError && history.length === 0 && (
-            <TestRunHistoryFeedback type="empty" />
+            <TestRunHistoryStates type="empty" />
           )}
 
           {!isHistoryLoading && !historyError && history.length > 0 && filteredHistory.length === 0 && (

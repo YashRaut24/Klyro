@@ -1,0 +1,15 @@
+.history-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.history-item-header .status-indicator {
+  order: 1;
+}
+
+.history-item-header .status-pill {
+  order: 1;
+}
